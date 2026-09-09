@@ -311,7 +311,7 @@ export default function FraudNetworkCanvas({
         ];
         rings.forEach(({ r, color }) => {
           ctx.save();
-          ctx.globalAlpha = ringFade * 0.10;
+          ctx.globalAlpha = ringFade * 0.18;
           ctx.setLineDash([3, 9]);
           ctx.strokeStyle = color;
           ctx.lineWidth   = 0.6;
@@ -336,8 +336,8 @@ export default function FraudNetworkCanvas({
 
         // Line alpha: dim non-selected persons; dim non-matched attrs
         let lineAlpha = 1;
-        if (selNode && !isAttr && i !== selIdx) lineAlpha = 0.12;
-        if (selNode && isAttr && !attrMatched)  lineAlpha = 0.12;
+        if (selNode && !isAttr && i !== selIdx) lineAlpha = 0.45;
+        if (selNode && isAttr && !attrMatched)  lineAlpha = 0.45;
 
         const ex = cx + (p.x - cx) * lp;
         const ey = cy + (p.y - cy) * lp;
@@ -348,8 +348,8 @@ export default function FraudNetworkCanvas({
         if (isAttr) {
           // ── Attribute lines: always solid, neutral indigo ──
           ctx.setLineDash([]);
-          ctx.strokeStyle = dark ? "rgba(99,102,241,0.20)" : "rgba(99,102,241,0.22)";
-          ctx.lineWidth   = 0.75;
+          ctx.strokeStyle = dark ? "rgba(99,102,241,0.75)" : "rgba(99,102,241,0.80)";
+          ctx.lineWidth   = 1.2;
           ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
 
           // Beam overlay when this attribute is matched to the selected person
@@ -380,20 +380,20 @@ export default function FraudNetworkCanvas({
           }
         } else if (!isAttr && auto) {
           // ── Auto-disposed person: faint dotted spoke ──
-          ctx.setLineDash([3, 9]);
+          ctx.setLineDash(isHovered ? [4, 5] : [3, 6]);
           ctx.lineDashOffset = isHovered ? -(time * 18) : 0;
           ctx.strokeStyle = isHovered
-            ? (dark ? "rgba(156,163,175,0.35)" : "rgba(107,114,128,0.40)")
-            : (dark ? "rgba(156,163,175,0.10)" : "rgba(107,114,128,0.12)");
-          ctx.lineWidth = 0.6;
+            ? (dark ? "rgba(156,163,175,0.90)" : "rgba(99,102,241,0.85)")
+            : (dark ? "rgba(156,163,175,0.50)" : "rgba(99,102,241,0.55)");
+          ctx.lineWidth = isHovered ? 1.1 : 0.9;
           ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
         } else {
           // ── Critical / high: very faint solid spoke, risk-tinted ──
           const sColor = riskColor(node.risk);
           const isActive = isHovered || i === selIdx;
           ctx.setLineDash([]);
-          ctx.strokeStyle = isActive ? sColor + "50" : sColor + "1c";
-          ctx.lineWidth = isActive ? 0.9 : 0.6;
+          ctx.strokeStyle = isActive ? sColor + "ee" : sColor + "99";
+          ctx.lineWidth = isActive ? 1.5 : 1.1;
           ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
 
           // Beam on hover or selection (person nodes only)
@@ -441,7 +441,7 @@ export default function FraudNetworkCanvas({
             const isHov   = i === hovIdx || j === hovIdx;
             const dimmed  = !!selNode;
             ctx.save();
-            ctx.globalAlpha = edgeFade * (dimmed ? 0.06 : isHov ? 0.55 : 0.22);
+            ctx.globalAlpha = edgeFade * (dimmed ? 0.30 : isHov ? 0.80 : 0.55);
             ctx.setLineDash([3, 5]);
             if (isHov) ctx.lineDashOffset = -(time * 22);
             ctx.lineWidth   = isHov ? 1.0 : 0.65;
@@ -463,7 +463,7 @@ export default function FraudNetworkCanvas({
 
         // Opacity: dim non-selected person nodes when a selection exists
         let nodeAlpha = np;
-        if (selNode && !isAttr && i !== selIdx) nodeAlpha = np * 0.20;
+        if (selNode && !isAttr && i !== selIdx) nodeAlpha = np * 0.75;
         if (selNode && isAttr) {
           const matched = (selNode.matchedAttributeIndices ?? []).includes(i);
           if (!matched) nodeAlpha = np * 0.30;
@@ -555,7 +555,7 @@ export default function FraudNetworkCanvas({
           const isHov    = i === hovIdx;
 
           // Extra dim for disposed nodes when not hovered
-          if (auto && !isHov) ctx.globalAlpha = nodeAlpha * 0.55;
+          if (auto && !isHov) ctx.globalAlpha = nodeAlpha * (dark ? 0.65 : 0.45);
 
           if (!auto) {
             const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 2.6);
@@ -583,7 +583,7 @@ export default function FraudNetworkCanvas({
           ctx.stroke();
 
           const iconColor = auto
-            ? (dark ? "rgba(156,163,175,0.50)" : "rgba(107,114,128,0.45)")
+            ? (dark ? "rgba(156,163,175,0.70)" : "rgba(80,80,120,0.60)")
             : (dark ? "rgba(255,255,255,0.88)"  : "rgba(80,70,130,0.85)");
           ctx.fillStyle = iconColor;
           ctx.beginPath(); ctx.arc(p.x, p.y - r * 0.22, r * 0.30, 0, Math.PI * 2); ctx.fill();
@@ -592,19 +592,25 @@ export default function FraudNetworkCanvas({
           // Peripheral (disposed) labels: only render on hover; primary labels always visible
           const showLabel = !auto || isHov;
           if (showLabel) {
-            const above = p.y < cy - 30;
-            const ly    = above ? p.y - r - 6 : p.y + r + 13;
-            ctx.font      = auto ? "9px -apple-system,system-ui,sans-serif" : "10px -apple-system,system-ui,sans-serif";
+            const above    = p.y < cy - 30;
+            const fontSize = auto ? 9 : 11;
+            const subSize  = 9;
+            const lineH    = 13;
+            // baseline of first line: clear circle edge by 14px above or 16px below
+            const ly       = above ? p.y - r - 14 : p.y + r + fontSize + 3;
+            const hasSubl  = !!node.sublabel && !auto;
+
+            ctx.font      = auto ? `${fontSize}px -apple-system,system-ui,sans-serif` : `600 ${fontSize}px -apple-system,system-ui,sans-serif`;
             ctx.fillStyle = auto
-              ? (dark ? "rgba(156,163,175,0.70)" : "rgba(107,114,128,0.65)")
-              : (dark ? "rgba(255,255,255,0.80)" : "rgba(0,0,0,0.65)");
+              ? (dark ? "rgba(156,163,175,0.80)" : "rgba(80,80,100,0.75)")
+              : (dark ? "rgba(255,255,255,0.88)" : "rgba(20,10,60,0.80)");
             ctx.textAlign    = "center";
             ctx.textBaseline = "alphabetic";
             ctx.fillText(node.label, p.x, ly);
-            if (node.sublabel && !auto) {
-              ctx.font      = "9px -apple-system,system-ui,sans-serif";
-              ctx.fillStyle = dark ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.30)";
-              ctx.fillText(node.sublabel, p.x, ly + 12);
+            if (hasSubl) {
+              ctx.font      = `${subSize}px -apple-system,system-ui,sans-serif`;
+              ctx.fillStyle = dark ? "rgba(255,255,255,0.42)" : "rgba(0,0,0,0.38)";
+              ctx.fillText(node.sublabel!, p.x, ly + lineH);
             }
           }
         }
@@ -637,13 +643,13 @@ export default function FraudNetworkCanvas({
       ctx.fillText(initials, cx, cy);
       ctx.textBaseline = "alphabetic";
 
-      ctx.font      = "bold 12px -apple-system,system-ui,sans-serif";
-      ctx.fillStyle = dark ? "rgba(255,255,255,0.92)" : "rgba(0,0,0,0.82)";
-      ctx.fillText(centerLabel, cx, cy + cR + 19);
+      ctx.font      = "600 13px -apple-system,system-ui,sans-serif";
+      ctx.fillStyle = dark ? "rgba(255,255,255,0.92)" : "rgba(20,10,60,0.85)";
+      ctx.fillText(centerLabel, cx, cy + cR + 22);
       if (centerSublabel) {
         ctx.font      = "10px -apple-system,system-ui,sans-serif";
         ctx.fillStyle = dark ? "rgba(255,255,255,0.42)" : "rgba(0,0,0,0.38)";
-        ctx.fillText(centerSublabel, cx, cy + cR + 32);
+        ctx.fillText(centerSublabel, cx, cy + cR + 36);
       }
 
       ctx.globalAlpha = 1;
@@ -767,9 +773,9 @@ export default function FraudNetworkCanvas({
 
   const btnBase: React.CSSProperties = {
     width: 32, height: 32, borderRadius: 8,
-    border: `1px solid ${dark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.10)"}`,
-    background: dark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.05)",
-    color: dark ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.45)",
+    border: `1px solid ${dark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.09)"}`,
+    background: dark ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.90)",
+    color: dark ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.50)",
     backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
     cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
     fontSize: 16, lineHeight: 1, transition: "background 0.15s, color 0.15s",
@@ -786,14 +792,14 @@ export default function FraudNetworkCanvas({
       <canvas ref={canvasRef} style={{ position: "absolute", inset: 0 }} />
       <div style={{ position: "absolute", top: 16, right: controlsRight, zIndex: 10, display: "flex", flexDirection: "column", gap: 4, transition: "right 0.25s ease" }}>
         <button onClick={zoomIn} style={btnBase} title="Zoom in"
-          onMouseEnter={e => (e.currentTarget.style.background = dark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.10)")}
-          onMouseLeave={e => (e.currentTarget.style.background = dark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.05)")}>+</button>
+          onMouseEnter={e => (e.currentTarget.style.background = dark ? "rgba(255,255,255,0.14)" : "rgba(240,240,255,0.95)")}
+          onMouseLeave={e => (e.currentTarget.style.background = dark ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.90)")}>+</button>
         <button onClick={zoomOut} style={btnBase} title="Zoom out"
-          onMouseEnter={e => (e.currentTarget.style.background = dark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.10)")}
-          onMouseLeave={e => (e.currentTarget.style.background = dark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.05)")}>−</button>
+          onMouseEnter={e => (e.currentTarget.style.background = dark ? "rgba(255,255,255,0.14)" : "rgba(240,240,255,0.95)")}
+          onMouseLeave={e => (e.currentTarget.style.background = dark ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.90)")}>−</button>
         <button onClick={resetView} style={{ ...btnBase, fontSize: 14 }} title="Reset view"
-          onMouseEnter={e => (e.currentTarget.style.background = dark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.10)")}
-          onMouseLeave={e => (e.currentTarget.style.background = dark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.05)")}>⟳</button>
+          onMouseEnter={e => (e.currentTarget.style.background = dark ? "rgba(255,255,255,0.14)" : "rgba(240,240,255,0.95)")}
+          onMouseLeave={e => (e.currentTarget.style.background = dark ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.90)")}>⟳</button>
       </div>
     </div>
   );

@@ -212,7 +212,7 @@ export function AIReasoningLoader({
                 borderRadius: 7,
                 backdropFilter: "blur(12px)",
                 WebkitBackdropFilter: "blur(12px)",
-                background: dark ? "rgba(10,10,20,0.55)" : "rgba(255,255,255,0.45)",
+                background: dark ? "rgba(10,10,20,0.55)" : "rgba(255,255,255,0.88)",
                 overflow: "hidden",
               }}>
                 {displayTasks.map((task, i) => (

@@ -15,7 +15,7 @@ import {
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import {
   AlertTriangle, ArrowLeft, ArrowRight, ArrowUp, Bell, Building2, Check, CheckCircle, ChevronDown, ChevronLeft, ChevronRight,
-  ExternalLink, FileText, Flame, Globe, Inbox, Moon, PanelLeftClose, PanelLeftOpen,
+  ExternalLink, Eye, EyeOff, FileText, Flame, Globe, Inbox, Moon, PanelLeftClose, PanelLeftOpen, PanelRightClose, Pencil,
   LogOut, Pin, Search, Settings, ShieldAlert, ShieldCheck, Sparkles, Sun, ThumbsDown, ThumbsUp, User, Users, X, XCircle,
 } from "lucide-react";
 import { BorderBeamButton, BorderBeamIconButton } from "@/components/ui/border-beam-button";
@@ -537,10 +537,12 @@ function CaseListItem({ item, selected, onClick, darkMode, pinned }: {
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-3 py-3 transition-colors border-b focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 ${
-        selected ? dm("bg-indigo-50/80", "bg-indigo-500/10") : dm("hover:bg-white/40", "hover:bg-white/[0.05]")
+      className={`relative w-full text-left px-3 py-3 transition-colors border-b focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 ${
+        selected
+          ? dm("bg-indigo-100/80", "bg-indigo-500/10")
+          : dm("hover:bg-gray-100/70", "hover:bg-white/[0.05]")
       }`}
-      style={{ borderColor: darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.05)" }}
+      style={{ borderColor: darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.07)" }}
     >
       <div className="flex items-start gap-2">
         <div className="flex-shrink-0 mt-2">
@@ -553,23 +555,23 @@ function CaseListItem({ item, selected, onClick, darkMode, pinned }: {
         </Avatar>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-1 mb-0.5">
-            <span className={`text-xs truncate ${item.unread
+            <span className={`text-sm truncate ${item.unread
               ? `font-semibold ${dm("text-gray-900","text-white")}`
-              : `font-medium ${dm("text-gray-700","text-slate-200")}`}`}>
+              : `font-medium ${dm("text-gray-800","text-slate-200")}`}`}>
               {item.customerName}
             </span>
             <div className="flex items-center gap-1 flex-shrink-0">
               {pinned && <Pin className={`h-2.5 w-2.5 fill-current ${dm("text-indigo-500","text-indigo-400")}`} />}
-              <span className={`text-[10px] tabular-nums ${dm("text-gray-400","text-gray-500")}`}>{item.time}</span>
+              <span className={`text-xs tabular-nums ${dm("text-gray-500","text-gray-400")}`}>{item.time}</span>
             </div>
           </div>
           <div className="flex items-center gap-1.5 mb-0.5">
-            <span className={`text-[11px] truncate ${dm("text-gray-500","text-gray-400")}`}>
+            <span className={`text-[13px] truncate ${dm("text-gray-700","text-gray-400")}`}>
               ↔ <span className="font-medium">{item.watchlistName}</span>
             </span>
-            <span className={`text-[10px] font-semibold ml-auto flex-shrink-0 ${riskTextColor[item.risk]}`}>{item.confidence}%</span>
+            <span className={`text-xs font-semibold ml-auto flex-shrink-0 ${riskTextColor[item.risk]}`}>{item.confidence}%</span>
           </div>
-          <p className={`text-[10px] ${dm("text-gray-400","text-gray-500")}`}>
+          <p className={`text-xs ${dm("text-gray-600","text-gray-500")}`}>
             {item.matchCount} total matches
           </p>
         </div>
@@ -590,12 +592,19 @@ export default function Dashboard() {
   const [pinnedCaseIds, setPinnedCaseIds]   = useState<Set<number>>(new Set());
   const [selectedCaseId, setSelectedCaseId] = useState<number | null>(null);
   const [caseTab, setCaseTab]               = useState<"overview"|"details"|"audit">("overview");
+  const [networkVisible, setNetworkVisible] = useState(true);
   const [dispositionSubmitted, setDispositionSubmitted] = useState(false);
+  const [submittedAt, setSubmittedAt]             = useState<string>("");
+  const [submittedChoice, setSubmittedChoice]     = useState<"false-positive"|"true-hit-high"|"true-hit-medium"|null>(null);
+  const [submittedComment, setSubmittedComment]   = useState<string>("");
+  const [isChangingDisposition, setIsChangingDisposition] = useState(false);
+  const [changeReason, setChangeReason]           = useState("");
+  const [auditLog, setAuditLog]                   = useState<{title:string;desc:string;tags:string[];time:string}[]>([]);
   const [chatInput, setChatInput]           = useState("");
   const [chatMessages, setChatMessages]     = useState<ChatMsg[]>([]);
   const [comparisonNode, setComparisonNode] = useState<FraudNode | null>(null);
   const [rightPaneOpen, setRightPaneOpen] = useState(true);
-  const [rightPaneWidth, setRightPaneWidth] = useState(296);
+  const [rightPaneWidth, setRightPaneWidth] = useState(340);
   const [caseFilter, setCaseFilter] = useState<"all" | "unread" | "high" | "medium" | "low">("all");
   const [dispositionChoice, setDispositionChoice] = useState<"false-positive" | "true-hit-high" | "true-hit-medium" | null>(null);
   const [trueHitStep, setTrueHitStep] = useState(false);
@@ -607,7 +616,7 @@ export default function Dashboard() {
   const [adverseArticleIdx, setAdverseArticleIdx] = useState(0);
   const [aiGuidanceStep, setAiGuidanceStep]   = useState<'overview'|'identity'|'sources'|'adverse-news'|'network'|'complete'>('overview');
   const [reviewState, setReviewState]         = useState({ identityReviewed: false, watchlistReviewed: false, adverseNewsReviewed: false, networkReviewed: false });
-  const [accordionValue, setAccordionValue]   = useState<string[]>([]);
+  const [accordionValue, setAccordionValue]   = useState<string[]>(["identifiers"]);
   const [pulseSection, setPulseSection]       = useState<string|null>(null);
   const [adverseSearchState, setAdverseSearchState] = useState<'idle'|'loading'|'complete'>('idle');
   const [searchOpen, setSearchOpen]           = useState(false);
@@ -615,6 +624,22 @@ export default function Dashboard() {
   const chatEndRef                            = useRef<HTMLDivElement>(null);
   const searchInputRef                        = useRef<HTMLInputElement>(null);
   const typeoutRef                            = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const RAIL_WIDTH = 44;
+
+  // ── Panel handlers ────────────────────────────────────────────────────────
+  const hideNetwork = () => {
+    if (!rightPaneOpen) setRightPaneOpen(true); // restore match analysis first
+    setNetworkVisible(false);
+  };
+  const showNetwork = () => setNetworkVisible(true);
+  const collapseMatchAnalysis = () => { if (networkVisible) setRightPaneOpen(false); };
+  const restoreMatchAnalysis  = () => setRightPaneOpen(true);
+
+  // Guard: match analysis and network can never both be hidden
+  useEffect(() => {
+    if (!networkVisible && !rightPaneOpen) setRightPaneOpen(true);
+  }, [networkVisible, rightPaneOpen]);
 
   const dm           = (l: string, d: string) => darkMode ? d : l;
   const selectedCase = cases.find(c => c.id === selectedCaseId) ?? null;
@@ -638,10 +663,16 @@ export default function Dashboard() {
       setRegenerating(false);
       setDispositionComment("");
       setDispositionSubmitted(false);
+      setSubmittedAt("");
+      setSubmittedChoice(null);
+      setSubmittedComment("");
+      setIsChangingDisposition(false);
+      setChangeReason("");
+      setAuditLog([]);
       setAdverseDetail(null);
       setAiGuidanceStep('overview');
       setReviewState({ identityReviewed: false, watchlistReviewed: false, adverseNewsReviewed: false, networkReviewed: false });
-      setAccordionValue([]);
+      setAccordionValue(["identifiers"]);
       setPulseSection(null);
       setAdverseSearchState('idle');
       const caseNodes = CASE_NODES[selectedCaseId as number] ?? [];
@@ -731,6 +762,7 @@ export default function Dashboard() {
   };
   const handleTriggerAdverseSearch = () => {
     setAdverseSearchState('loading');
+    setRightPaneOpen(true);
     setAccordionValue(prev => [...new Set([...prev, 'sources'])]);
     setPulseSection('sources');
     setReviewState(s => ({ ...s, watchlistReviewed: true }));
@@ -762,6 +794,8 @@ export default function Dashboard() {
   const handleReviewAdverseNews = () => {
     setAdverseArticleIdx(0);
     setAdverseDetail(ADVERSE_ARTICLES[0]);
+    setRightPaneOpen(true);
+    setAccordionValue(prev => [...new Set([...prev, 'sources'])]);
     setReviewState(s => ({ ...s, adverseNewsReviewed: true }));
     setAiGuidanceStep('adverse-news');
     const reasoning = {
@@ -805,34 +839,36 @@ export default function Dashboard() {
   };
 
   const panelStyle = {
-    background: darkMode ? "rgba(10,8,22,0.08)" : "rgba(255,255,255,0.10)",
-    border: `1px solid ${darkMode ? "rgba(255,255,255,0.11)" : "rgba(99,102,241,0.18)"}`,
+    background: darkMode ? "rgba(10,8,22,0.08)" : "rgba(255,255,255,0.52)",
+    backdropFilter: darkMode ? undefined : "blur(32px) saturate(1.6)",
+    WebkitBackdropFilter: darkMode ? undefined : "blur(32px) saturate(1.6)",
+    border: `1px solid ${darkMode ? "rgba(255,255,255,0.11)" : "rgba(99,102,241,0.22)"}`,
     boxShadow: darkMode
       ? "0 4px 40px rgba(0,0,0,0.65)"
-      : "0 4px 28px rgba(99,102,241,0.06)",
+      : "0 4px 32px rgba(99,102,241,0.10), inset 0 1px 0 rgba(255,255,255,0.80)",
   };
 
   const innerCardStyle = {
-    border: `1px solid ${darkMode ? "rgba(255,255,255,0.11)" : "rgba(99,102,241,0.16)"}`,
-    background: darkMode ? "rgba(28,22,52,0.72)" : "#ffffff",
-    backdropFilter: darkMode ? "blur(36px) saturate(2.2) brightness(0.88)" : "none",
-    WebkitBackdropFilter: darkMode ? "blur(36px) saturate(2.2) brightness(0.88)" : "none",
+    border: `1px solid ${darkMode ? "rgba(255,255,255,0.11)" : "rgba(99,102,241,0.18)"}`,
+    background: darkMode ? "rgba(28,22,52,0.72)" : "rgba(255,255,255,0.72)",
+    backdropFilter: darkMode ? "blur(36px) saturate(2.2) brightness(0.88)" : "blur(20px) saturate(1.5)",
+    WebkitBackdropFilter: darkMode ? "blur(36px) saturate(2.2) brightness(0.88)" : "blur(20px) saturate(1.5)",
     boxShadow: darkMode
       ? "0 2px 8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.10), inset 0 0 0 0.5px rgba(255,255,255,0.06)"
-      : "0 1px 8px rgba(99,102,241,0.06), 0 0 0 0.5px rgba(99,102,241,0.10)",
+      : "0 2px 16px rgba(99,102,241,0.08), inset 0 1px 0 rgba(255,255,255,0.90)",
   };
 
   const barStyle = {
-    borderBottom: `1px solid ${darkMode ? "rgba(255,255,255,0.10)" : "rgba(99,102,241,0.12)"}`,
-    background: darkMode ? "rgba(10,8,22,0.30)" : "rgba(255,255,255,0.30)",
-    backdropFilter: "blur(24px)",
-    WebkitBackdropFilter: "blur(24px)",
+    borderBottom: `1px solid ${darkMode ? "rgba(255,255,255,0.10)" : "rgba(99,102,241,0.14)"}`,
+    background: darkMode ? "rgba(10,8,22,0.30)" : "rgba(255,255,255,0.50)",
+    backdropFilter: "blur(24px) saturate(1.6)",
+    WebkitBackdropFilter: "blur(24px) saturate(1.6)",
   };
 
   const chatPanelStyle = {
-    background: darkMode ? "rgba(8,6,22,0.36)" : "rgba(255,255,255,0.45)",
-    backdropFilter: "blur(48px) saturate(2.2) brightness(0.92)",
-    WebkitBackdropFilter: "blur(48px) saturate(2.2) brightness(0.92)",
+    background: darkMode ? "rgba(8,6,22,0.36)" : "rgba(255,255,255,0.72)",
+    backdropFilter: "blur(48px) saturate(1.8) brightness(1.04)",
+    WebkitBackdropFilter: "blur(48px) saturate(1.8) brightness(1.04)",
     borderLeft: `1px solid ${darkMode ? "rgba(139,92,246,0.18)" : "rgba(99,102,241,0.20)"}`,
     boxShadow: darkMode
       ? "inset 1px 0 0 rgba(139,92,246,0.12), -4px 0 32px rgba(0,0,0,0.35)"
@@ -867,6 +903,7 @@ export default function Dashboard() {
             WebkitBackdropFilter: "blur(10px)",
             display: "flex", flexDirection: "column", alignItems: "center",
             paddingTop: "16vh",
+            animation: "search-backdrop-in 0.18s ease-out both",
           }}
           onClick={() => setSearchOpen(false)}
         >
@@ -880,6 +917,7 @@ export default function Dashboard() {
                 ? "0 32px 96px rgba(0,0,0,0.75), 0 0 0 0.5px rgba(99,102,241,0.18)"
                 : "0 24px 64px rgba(0,0,0,0.18), 0 0 0 1px rgba(99,102,241,0.12)",
               overflow: "hidden",
+              animation: "search-panel-in 0.2s cubic-bezier(0.16,1,0.3,1) both",
             }}
             onClick={e => e.stopPropagation()}
           >
@@ -1027,17 +1065,17 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="absolute inset-0 pointer-events-none" style={{ zIndex:0, opacity: darkMode ? 0.15 : 0.12 }}>
+      <div className="absolute inset-0 pointer-events-none" style={{ zIndex:0, opacity: darkMode ? 0.15 : 0.22 }}>
         <ColorBends
           colors={darkMode ? ["#7c3aed","#a855f7","#4f46e5"] : ["#6366f1","#818cf8","#8b5cf6"]}
           rotation={90} speed={0.15} bandWidth={6} intensity={darkMode ? 1.2 : 1.5}
           transparent warpStrength={1} mouseInfluence={0.3} noise={0} frequency={1} iterations={1}
         />
       </div>
-      <div className="absolute inset-0 pointer-events-none" style={{ zIndex:0, background: darkMode ? "rgba(10,7,22,0.45)" : "rgba(245,243,252,0.60)" }} />
+      <div className="absolute inset-0 pointer-events-none" style={{ zIndex:0, background: darkMode ? "rgba(10,7,22,0.45)" : "rgba(238,235,255,0.38)" }} />
 
       {/* Top bar card */}
-      <div className="flex-shrink-0 rounded-2xl flex items-center px-4 py-1.5 relative" style={{ zIndex:2, ...panelStyle, boxShadow:"none", border:"none" }}>
+      <div className="flex-shrink-0 rounded-2xl flex items-center px-4 py-1.5 relative" style={{ zIndex:2, ...panelStyle, boxShadow:"none", border:"none", background:"transparent", backdropFilter:"none", WebkitBackdropFilter:"none" }}>
         {/* Logo */}
         <div className="flex items-center gap-2 flex-shrink-0">
           <ShieldAlert className={`h-4 w-4 ${dm("text-gray-900","text-indigo-400")}`} />
@@ -1104,9 +1142,9 @@ export default function Dashboard() {
                     {/* TODAY */}
                     <div style={{ padding: "10px 16px 4px", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: darkMode ? "rgba(255,255,255,0.30)" : "rgba(0,0,0,0.35)", textTransform: "uppercase" }}>Today</div>
                     {[
-                      { id: 0, title: "New match detected", body: "Li Bin matched against OFAC SDN", time: "12 min ago", action: "View case →", unread: true },
-                      { id: 1, title: "Investigation assigned to you", body: "Rahman Mohammad Mizanur", time: "1 hr ago", action: "Open →", unread: true },
-                      { id: 2, title: "AI analysis completed", body: "8 new sources analysed for Li Bin", time: "2 hr ago", action: "View results →", unread: false },
+                      { id: 0, title: "New match detected", body: "Li Bin matched against OFAC SDN", time: "12 min ago", action: "View case", unread: true },
+                      { id: 1, title: "Investigation assigned to you", body: "Rahman Mohammad Mizanur", time: "1 hr ago", action: "Open", unread: true },
+                      { id: 2, title: "AI analysis completed", body: "8 new sources analysed for Li Bin", time: "2 hr ago", action: "View results", unread: false },
                     ].map(n => (
                       <div
                         key={n.id}
@@ -1131,7 +1169,10 @@ export default function Dashboard() {
                           <div style={{ fontSize: 11, color: darkMode ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.45)", marginBottom: 4 }}>{n.body}</div>
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                             <span style={{ fontSize: 10, color: darkMode ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.30)" }}>{n.time}</span>
-                            <button style={{ fontSize: 11, color: "#818cf8", background: "none", border: "none", cursor: "pointer", padding: 0, fontWeight: 500 }}>{n.action}</button>
+                            <button style={{ fontSize: 11, color: "#818cf8", background: "none", border: "none", cursor: "pointer", padding: 0, fontWeight: 500, display: "flex", alignItems: "center", gap: 2 }}>
+                              {n.action}
+                              <ChevronRight style={{ width: 11, height: 11 }} />
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -1187,11 +1228,10 @@ export default function Dashboard() {
                 boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
               } : {}}
             >
-              <div className={`px-2 py-1.5 flex flex-col gap-0.5 ${dm("","border-b border-white/[0.08]")}`}>
-                <span className={`text-sm font-medium ${dm("text-gray-900","text-slate-100")}`}>Ruby Tan</span>
-                <span className={`text-xs ${dm("text-gray-500","text-gray-400")}`}>ruby.tan@accenture.com</span>
+              <div className={`px-2 py-1.5 flex flex-col gap-0.5 ${dm("border-b border-black/[0.06]","border-b border-white/[0.08]")}`}>
+                <span className={`text-sm font-medium ${dm("text-gray-900","text-slate-100")}`}>Victor Chee</span>
+                <span className={`text-xs ${dm("text-gray-500","text-gray-400")}`}>victor.chee@accenture.com</span>
               </div>
-              <DropdownMenuSeparator style={darkMode ? { background: "rgba(255,255,255,0.08)" } : {}} />
               <DropdownMenuItem
                 className="gap-2"
                 style={darkMode ? { color:"rgba(226,232,240,1)" } : {}}
@@ -1308,7 +1348,7 @@ export default function Dashboard() {
             </button>
           </div>
           {/* Filter pills */}
-          <div className="flex gap-1.5 px-3 py-2 overflow-x-auto flex-shrink-0 no-scrollbar" style={{ borderBottom: `1px solid ${darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` }}>
+          <div className="flex gap-1.5 px-3 overflow-x-auto flex-shrink-0 no-scrollbar" style={{ height: 44, alignItems: "center", borderBottom: `1px solid ${darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` }}>
             {([ ["all","All"], ["unread","Unread"], ["high","High Match"], ["medium","Medium Match"], ["low","Low Match"] ] as const).map(([key, label]) => {
               const active = caseFilter === key;
               return (
@@ -1460,7 +1500,7 @@ export default function Dashboard() {
 
         {/* Top nav — only shown when a case is open */}
         {selectedCase && (
-          <nav className="flex items-center justify-between px-5 py-3 flex-shrink-0 relative" style={{ ...barStyle, zIndex:2 }}>
+          <nav className="flex items-center gap-4 px-5 flex-shrink-0 relative" style={{ ...barStyle, zIndex: 12, height: 44 }}>
             <div className="flex items-center gap-4">
               {[
                 { key:"overview",  label:"Overview" },
@@ -1471,9 +1511,9 @@ export default function Dashboard() {
                 return (
                   <button key={key}
                     onClick={() => setCaseTab(key as typeof caseTab)}
-                    className={`text-sm pb-0.5 relative transition-colors rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ${
+                    className={`text-sm font-medium pb-0.5 relative transition-colors rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ${
                       active
-                        ? `font-medium ${dm("text-gray-900 after:absolute after:bottom-[-13px] after:left-0 after:right-0 after:h-0.5 after:bg-gray-900 after:rounded-full","text-white after:absolute after:bottom-[-13px] after:left-0 after:right-0 after:h-0.5 after:bg-indigo-400 after:rounded-full")}`
+                        ? dm("text-gray-900 after:absolute after:bottom-[-13px] after:left-0 after:right-0 after:h-0.5 after:bg-gray-900 after:rounded-full","text-white after:absolute after:bottom-[-13px] after:left-0 after:right-0 after:h-0.5 after:bg-indigo-400 after:rounded-full")
                         : dm("text-gray-400 hover:text-gray-700","text-gray-500 hover:text-gray-300")
                     }`}
                   >
@@ -1482,6 +1522,25 @@ export default function Dashboard() {
                 );
               })}
             </div>
+            {caseTab === "overview" && (
+              <button
+                onClick={() => networkVisible ? hideNetwork() : showNetwork()}
+                aria-label={networkVisible ? "Hide network graph" : "Show network graph"}
+                style={{
+                  marginLeft: "auto",
+                  display: "flex", alignItems: "center", gap: 4,
+                  fontSize: 11, fontWeight: 600,
+                  padding: "4px 10px", borderRadius: 99,
+                  cursor: "pointer",
+                  background: networkVisible ? "rgba(129,140,248,0.12)" : "rgba(129,140,248,0.25)",
+                  border: "1px solid rgba(129,140,248,0.35)",
+                  color: "#818cf8",
+                }}
+              >
+                {networkVisible ? <EyeOff style={{ width: 11, height: 11 }} /> : <Eye style={{ width: 11, height: 11 }} />}
+                {networkVisible ? "Hide network" : "Show network"}
+              </button>
+            )}
           </nav>
         )}
 
@@ -1496,14 +1555,14 @@ export default function Dashboard() {
               {/* ── Overview tab ── */}
               {caseTab === "overview" && <>
               {/* Fraud network canvas — full background */}
-              <FraudNetworkCanvas
+              {networkVisible && <FraudNetworkCanvas
                 centerLabel={selectedCase.customerName}
                 centerSublabel={`${selectedCase.watchlistSource} · ${selectedCase.confidence}% match`}
                 nodes={caseNodes}
                 dark={darkMode}
                 style={{ position:"absolute", inset:0 }}
                 selectedNodeLabel={comparisonNode?.label}
-                controlsRight={chatCollapsed ? 16 : chatPanelWidth + 16}
+                controlsRight={chatCollapsed ? RAIL_WIDTH + 8 : chatPanelWidth + 16}
                 onNodeClick={(node) => {
                   const isDisposed = node.risk === "medium" || node.risk === "low";
                   setAdverseDetail(null);
@@ -1521,7 +1580,7 @@ export default function Dashboard() {
                     );
                   }
                 }}
-              />
+              />}
 
               {/* Node count badge — canvas layer, drawer overlays on top */}
               <div style={{
@@ -1545,6 +1604,8 @@ export default function Dashboard() {
                 right: 16,
                 bottom: 16,
                 width: chatPanelWidth - 32,
+                transition: "width 0.2s ease-out",
+                display: chatCollapsed ? "none" : undefined,
               }}>
                 <div style={{
                   borderRadius: "9999px",
@@ -1567,7 +1628,7 @@ export default function Dashboard() {
                       value={chatInput}
                       onChange={e => setChatInput(e.target.value)}
                       onKeyDown={e => { if (e.key === "Enter") handleSend(); }}
-                      placeholder="Ask your Fraud Agent Anything"
+                      placeholder="Ask Casework Agent anything"
                       className={`flex-1 bg-transparent text-sm focus:outline-none ${dm("text-gray-900 placeholder-gray-400","text-slate-200 placeholder-gray-600")}`}
                     />
                     <button
@@ -1584,29 +1645,38 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Collapsed tab — only visible when panel is hidden */}
+              {/* AI rail — shown when chat is collapsed */}
               {chatCollapsed && (
-                <button
-                  onClick={() => setChatCollapsed(false)}
-                  title="Expand chat"
-                  style={{
-                    position: "absolute", top: "50%", transform: "translateY(-50%)", right: 0, zIndex: 20,
-                    width: 28, height: 28, borderRadius: "6px 0 0 6px",
-                    border: `1px solid ${darkMode ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.08)"}`,
-                    borderRight: "none",
-                    background: darkMode ? "rgba(15,12,30,0.90)" : "rgba(245,244,255,0.95)",
-                    backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
-                    cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                    color: darkMode ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.40)",
-                  }}
-                >
-                  <PanelLeftClose className="h-3 w-3" />
-                </button>
+                <div style={{
+                  position: "absolute", top: 0, right: 0, bottom: 0, width: RAIL_WIDTH, zIndex: 20,
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
+                  background: darkMode ? "rgba(8,6,22,0.36)" : "rgba(255,255,255,0.45)",
+                  backdropFilter: "blur(48px)", WebkitBackdropFilter: "blur(48px)",
+                  borderLeft: `1px solid ${darkMode ? "rgba(139,92,246,0.18)" : "rgba(99,102,241,0.20)"}`,
+                }}>
+                  <button
+                    onClick={() => setChatCollapsed(false)}
+                    aria-label="Open Ask AI"
+                    title="Open Ask AI"
+                    style={{
+                      background: "none", border: "none", cursor: "pointer", padding: 8,
+                      color: darkMode ? "rgba(255,255,255,0.40)" : "rgba(0,0,0,0.35)",
+                      display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+                    }}
+                  >
+                    <Sparkles style={{ width: 14, height: 14, color: "#818cf8" }} />
+                    <span style={{
+                      fontSize: 9, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase",
+                      color: darkMode ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.30)",
+                      writingMode: "vertical-rl", transform: "rotate(180deg)",
+                    }}>Ask AI</span>
+                  </button>
+                </div>
               )}
 
               {/* AI chat panel — right overlay */}
               <div
-                style={{ position:"absolute", top:0, right:0, bottom:0, width:chatCollapsed ? 0 : chatPanelWidth, zIndex:10, display:"flex", flexDirection:"column", overflow:"hidden", transition:"width 0.25s ease", ...(!chatCollapsed ? chatPanelStyle : {}) }}
+                style={{ position:"absolute", top:0, right:0, bottom:0, width: chatCollapsed ? 0 : chatPanelWidth, zIndex:10, display:"flex", flexDirection:"column", overflow:"hidden", transition:"width 0.2s ease-out", ...(!chatCollapsed ? chatPanelStyle : {}) }}
               >
                 {/* Panel header */}
                 <div style={{
@@ -1648,10 +1718,10 @@ export default function Dashboard() {
                     // ── AI message ────────────────────────────────────────
                     const thumbs = (
                       <div className="flex items-center gap-1 mt-2">
-                        <button className={`p-1 rounded transition-colors ${dm("text-gray-300 hover:text-green-600 hover:bg-green-50","text-gray-600 hover:text-green-400 hover:bg-green-400/10")}`} title="Good response">
+                        <button className={`p-1 rounded transition-colors ${dm("text-gray-400 hover:text-green-600 hover:bg-green-50","text-gray-600 hover:text-green-400 hover:bg-green-400/10")}`} title="Good response">
                           <ThumbsUp className="h-3 w-3" />
                         </button>
-                        <button className={`p-1 rounded transition-colors ${dm("text-gray-300 hover:text-red-500 hover:bg-red-50","text-gray-600 hover:text-red-400 hover:bg-red-400/10")}`} title="Bad response">
+                        <button className={`p-1 rounded transition-colors ${dm("text-gray-400 hover:text-red-500 hover:bg-red-50","text-gray-600 hover:text-red-400 hover:bg-red-400/10")}`} title="Bad response">
                           <ThumbsDown className="h-3 w-3" />
                         </button>
                       </div>
@@ -1877,9 +1947,36 @@ export default function Dashboard() {
                 </button>
               )}
 
+              {/* ── Restore handle: match analysis (left edge of network) ── */}
+              {!rightPaneOpen && networkVisible && (
+                <button
+                  onClick={restoreMatchAnalysis}
+                  aria-label="Show match analysis"
+                  title="Show match analysis"
+                  style={{
+                    position: "absolute", left: 0, top: 0, bottom: 0, width: 20, zIndex: 26,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    background: darkMode ? "rgba(9,7,22,0.55)" : "rgba(255,255,255,0.60)",
+                    backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
+                    borderRight: `1px solid ${darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.07)"}`,
+                    cursor: "pointer", border: "none",
+                    color: darkMode ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.30)",
+                    transition: "color 0.15s",
+                  }}
+                >
+                  <ChevronRight style={{ width: 12, height: 12 }} />
+                </button>
+              )}
+
               {/* ── Unified left pane: Match Analysis + Disposition ── */}
               <div style={{
-                position: "absolute", left: 0, top: 0, bottom: 0, width: rightPaneOpen ? rightPaneWidth : 0, zIndex: 25,
+                position: "absolute", left: 0, top: 0, bottom: 0,
+                width: !rightPaneOpen
+                  ? 0
+                  : networkVisible
+                    ? rightPaneWidth
+                    : `calc(100% - ${chatCollapsed ? 0 : chatPanelWidth}px)`,
+                zIndex: 25,
                 display: "flex", flexDirection: "column",
                 background: darkMode ? "rgba(9,7,22,0.84)" : "rgba(255,255,255,0.86)",
                 backdropFilter: "blur(32px) saturate(1.8)",
@@ -1887,10 +1984,10 @@ export default function Dashboard() {
                 borderRight: rightPaneOpen ? `1px solid ${darkMode ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.07)"}` : "none",
                 overflowX: "hidden",
                 overflowY: "hidden",
-                transition: "width 0.22s ease",
+                transition: "width 0.2s ease-out",
               }}>
-                {/* Resize handle on right edge */}
-                {rightPaneOpen && (
+                {/* Resize handle on right edge — only when network is visible */}
+                {rightPaneOpen && networkVisible && (
                   <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 8, zIndex: 10 }}>
                     <ResizeHandle
                       dark={darkMode}
@@ -1938,9 +2035,9 @@ export default function Dashboard() {
                                 aria-label="Previous node"
                                 onClick={() => goTo(nodeIdx - 1)}
                                 className="h-6 w-6 rounded-md border-transparent disabled:opacity-30"
-                                style={{ background: "rgba(9,7,22,0.90)" }}
+                                style={{ background: darkMode ? "rgba(9,7,22,0.90)" : "rgba(255,255,255,0.88)" }}
                               >
-                                <ChevronLeft className="h-3 w-3" style={{ color: "rgba(255,255,255,0.70)" }} />
+                                <ChevronLeft className="h-3 w-3" style={{ color: darkMode ? "rgba(255,255,255,0.70)" : "rgba(80,60,160,0.80)" }} />
                               </BorderBeamIconButton>
                               <span style={{ fontSize: 10, color: darkMode ? "rgba(255,255,255,0.30)" : "rgba(0,0,0,0.35)", minWidth: 28, textAlign: "center" }}>
                                 {nodeIdx + 1}/{caseNodes.length}
@@ -1952,19 +2049,22 @@ export default function Dashboard() {
                                 aria-label="Next node"
                                 onClick={() => goTo(nodeIdx + 1)}
                                 className="h-6 w-6 rounded-md border-transparent disabled:opacity-30"
-                                style={{ background: "rgba(9,7,22,0.90)" }}
+                                style={{ background: darkMode ? "rgba(9,7,22,0.90)" : "rgba(255,255,255,0.88)" }}
                               >
-                                <ChevronRight className="h-3 w-3" style={{ color: "rgba(255,255,255,0.70)" }} />
+                                <ChevronRight className="h-3 w-3" style={{ color: darkMode ? "rgba(255,255,255,0.70)" : "rgba(80,60,160,0.80)" }} />
                               </BorderBeamIconButton>
                             </>
                           )}
-                          <button
-                            onClick={() => setRightPaneOpen(false)}
-                            title="Close"
-                            style={{ background: "none", border: "none", cursor: "pointer", padding: 2, lineHeight: 1, marginLeft: 2, color: darkMode ? "rgba(255,255,255,0.30)" : "rgba(0,0,0,0.30)" }}
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
+                          {networkVisible && (
+                            <button
+                              onClick={collapseMatchAnalysis}
+                              aria-label="Collapse match analysis"
+                              title="Collapse match analysis"
+                              style={{ background: "none", border: "none", cursor: "pointer", padding: 2, lineHeight: 1, marginLeft: 2, color: darkMode ? "rgba(255,255,255,0.30)" : "rgba(0,0,0,0.30)" }}
+                            >
+                              <PanelLeftClose className="h-3.5 w-3.5" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -2027,7 +2127,7 @@ export default function Dashboard() {
                         </span>
                       </div>
                       {/* Blurb */}
-                      <div style={{ background: "linear-gradient(160deg, rgba(255,255,255,0.03) 0%, rgba(9,7,22,0.80) 70%) padding-box, linear-gradient(135deg, rgba(129,140,248,0.5) 0%, rgba(192,132,252,0.4) 50%, rgba(244,114,182,0.35) 100%) border-box", border: "1px solid transparent", borderRadius: 8, padding: "10px 12px", marginBottom: 16, fontSize: 12, color: darkMode ? "rgba(255,255,255,0.65)" : "rgba(0,0,0,0.60)", lineHeight: 1.55 }}>
+                      <div style={{ background: darkMode ? "linear-gradient(160deg, rgba(255,255,255,0.03) 0%, rgba(9,7,22,0.80) 70%) padding-box, linear-gradient(135deg, rgba(129,140,248,0.5) 0%, rgba(192,132,252,0.4) 50%, rgba(244,114,182,0.35) 100%) border-box" : "linear-gradient(160deg, rgba(255,255,255,0.95) 0%, rgba(240,236,255,0.80) 100%) padding-box, linear-gradient(135deg, rgba(129,140,248,0.5) 0%, rgba(192,132,252,0.4) 50%, rgba(244,114,182,0.35) 100%) border-box", border: "1px solid transparent", borderRadius: 8, padding: "10px 12px", marginBottom: 16, fontSize: 12, color: darkMode ? "rgba(255,255,255,0.65)" : "rgba(0,0,0,0.60)", lineHeight: 1.55 }}>
                         This article mentions <strong style={{ color: darkMode ? "rgba(255,255,255,0.88)" : "rgba(0,0,0,0.82)", fontWeight: 600 }}>{selectedCase.customerName}</strong> in relation to asset freezes and alleged links to sanctioned entities.
                       </div>
                       {/* Matched Person */}
@@ -2214,73 +2314,87 @@ export default function Dashboard() {
                 </div>
 
                 {/* ── Disposition ── */}
-                <div className={pulseSection === 'disposition' ? 'ai-pulse' : ''} style={{ padding: "14px 16px", flexShrink: 0, borderTop: `1px solid ${darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)"}` }}>
+                <div className={pulseSection === 'disposition' ? 'ai-pulse' : ''} style={{ padding: "14px 16px", flexShrink: 0, borderTop: `1px solid ${darkMode ? "rgba(255,255,255,0.09)" : "rgba(0,0,0,0.08)"}`, background: darkMode ? "rgba(255,255,255,0.035)" : "rgba(0,0,0,0.025)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}>
                   <div style={{ marginBottom: 12 }}>
                     <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", color: "#818cf8", textTransform: "uppercase" }}>Disposition</span>
                   </div>
-                  {/* Step 1 — False Positive or True Hit */}
-                  {(() => {
+                  {/* Step 1 — False Positive or True Hit (hidden when submitted and not editing) */}
+                  {(!dispositionSubmitted || isChangingDisposition) && (() => {
                     const isFP      = dispositionChoice === "false-positive";
                     const isTH      = trueHitStep || dispositionChoice === "true-hit-high" || dispositionChoice === "true-hit-medium";
                     const step1 = [
                       { id: "fp" as const,  label: "False Positive", icon: <XCircle className="h-4 w-4 flex-shrink-0" />, color: "rgb(34,197,94)",  bg: darkMode ? "rgba(34,197,94,0.12)"  : "rgba(34,197,94,0.10)"  },
                       { id: "th" as const,  label: "True Hit",       icon: <Check   className="h-4 w-4 flex-shrink-0" />, color: "rgb(239,68,68)",  bg: darkMode ? "rgba(239,68,68,0.12)"  : "rgba(239,68,68,0.10)"  },
                     ];
-                    return (<>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: (isTH) ? 10 : 0 }}>
-                        {step1.map(opt => {
-                          const active = opt.id === "fp" ? isFP : isTH;
+                    const wideMode = !networkVisible;
+                    const makePriorityButtons = (fullWidth: boolean) => (
+                      <div style={{ display: fullWidth ? "flex" : "inline-flex", borderRadius: 8, overflow: "hidden", border: `1px solid ${darkMode ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)"}`, width: fullWidth ? "100%" : undefined }}>
+                        {([
+                          { key: "true-hit-high"   as const, label: "High",   color: "rgb(239,68,68)",  bg: darkMode ? "rgba(239,68,68,0.18)"  : "rgba(239,68,68,0.10)"  },
+                          { key: "true-hit-medium" as const, label: "Medium", color: "rgb(251,191,36)", bg: darkMode ? "rgba(251,191,36,0.18)" : "rgba(251,191,36,0.10)" },
+                        ] as const).map((p, i) => {
+                          const active = dispositionChoice === p.key;
                           return (
-                            <button key={opt.id} onClick={() => {
-                              if (opt.id === "fp") {
-                                setDispositionChoice(isFP ? null : "false-positive");
-                                setTrueHitStep(false);
-                              } else {
-                                setDispositionChoice(null);
-                                setTrueHitStep(!isTH);
-                              }
-                            }} style={{
-                              display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "9px 8px",
-                              borderRadius: 8, textAlign: "center", transition: "background 0.12s, border-color 0.12s",
-                              border: `1px solid ${active ? opt.color + "55" : darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.07)"}`,
-                              background: active ? opt.bg : "transparent", cursor: "pointer",
+                            <button key={p.key} onClick={() => setDispositionChoice(active ? null : p.key)} style={{
+                              flex: fullWidth ? 1 : undefined, width: fullWidth ? undefined : 80,
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              padding: "9px 8px", cursor: "pointer",
+                              borderLeft: i === 1 ? `1px solid ${darkMode ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)"}` : "none",
+                              transition: "background 0.12s, color 0.12s",
+                              background: active ? p.bg : "transparent",
                             }}>
-                              <span style={{ color: active ? opt.color : darkMode ? "rgba(255,255,255,0.40)" : "rgba(0,0,0,0.35)" }}>{opt.icon}</span>
-                              <span style={{ fontSize: 12, fontWeight: 600, color: active ? opt.color : darkMode ? "rgba(255,255,255,0.80)" : "rgba(0,0,0,0.75)" }}>{opt.label}</span>
+                              <span style={{ fontSize: 12, fontWeight: active ? 600 : 400, color: active ? p.color : darkMode ? "rgba(255,255,255,0.60)" : "rgba(0,0,0,0.55)" }}>{p.label}</span>
                             </button>
                           );
                         })}
                       </div>
+                    );
 
-                      {/* Step 2 — Priority (only when True Hit is selected) */}
-                      {isTH && (
-                        <div style={{ marginBottom: 6 }}>
-                          <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6, color: darkMode ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.40)" }}>Select Priority</p>
-                          <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: `1px solid ${darkMode ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)"}` }}>
-                          {([
-                            { key: "true-hit-high"   as const, label: "High",   icon: <Flame         className="h-3 w-3 flex-shrink-0" />, color: "rgb(239,68,68)",  bg: darkMode ? "rgba(239,68,68,0.18)"  : "rgba(239,68,68,0.10)"  },
-                            { key: "true-hit-medium" as const, label: "Medium", icon: <AlertTriangle className="h-3 w-3 flex-shrink-0" />, color: "rgb(251,191,36)", bg: darkMode ? "rgba(251,191,36,0.18)" : "rgba(251,191,36,0.10)" },
-                          ] as const).map((p, i) => {
-                            const active = dispositionChoice === p.key;
+                    return (<>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: isTH && !wideMode ? 10 : isTH ? 10 : 0, flexWrap: "wrap" }}>
+                        <div style={{ display: wideMode ? "inline-flex" : "flex", gap: 6, flex: wideMode ? undefined : 1 }}>
+                          {step1.map(opt => {
+                            const active = opt.id === "fp" ? isFP : isTH;
                             return (
-                              <button key={p.key} onClick={() => setDispositionChoice(active ? null : p.key)} style={{
-                                flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                                padding: "6px 8px", cursor: "pointer",
-                                borderLeft: i === 1 ? `1px solid ${darkMode ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)"}` : "none",
-                                transition: "background 0.12s, color 0.12s",
-                                background: active ? p.bg : "transparent",
+                              <button key={opt.id} onClick={() => {
+                                if (opt.id === "fp") {
+                                  setDispositionChoice(isFP ? null : "false-positive");
+                                  setTrueHitStep(false);
+                                } else {
+                                  setDispositionChoice(null);
+                                  setTrueHitStep(!isTH);
+                                }
+                              }} style={{
+                                width: wideMode ? 130 : undefined, flex: wideMode ? undefined : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "9px 8px",
+                                borderRadius: 8, textAlign: "center", transition: "background 0.12s, border-color 0.12s",
+                                border: `1px solid ${active ? opt.color + "55" : darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.07)"}`,
+                                background: active ? opt.bg : "transparent", cursor: "pointer",
                               }}>
-                                <span style={{ color: active ? p.color : darkMode ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.35)" }}>{p.icon}</span>
-                                <span style={{ fontSize: 11, fontWeight: active ? 600 : 400, color: active ? p.color : darkMode ? "rgba(255,255,255,0.60)" : "rgba(0,0,0,0.55)" }}>{p.label}</span>
+                                <span style={{ color: active ? opt.color : darkMode ? "rgba(255,255,255,0.40)" : "rgba(0,0,0,0.35)" }}>{opt.icon}</span>
+                                <span style={{ fontSize: 12, fontWeight: 600, color: active ? opt.color : darkMode ? "rgba(255,255,255,0.80)" : "rgba(0,0,0,0.75)" }}>{opt.label}</span>
                               </button>
                             );
                           })}
+                        </div>
+                        {/* Priority inline when wide mode */}
+                        {wideMode && isTH && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, marginLeft: 10 }}>
+                            <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: darkMode ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.40)" }}>Priority</span>
+                            {makePriorityButtons(false)}
                           </div>
+                        )}
+                      </div>
+
+                      {/* Step 2 — Priority stacked when narrow */}
+                      {!wideMode && isTH && (
+                        <div style={{ marginBottom: 6 }}>
+                          <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6, color: darkMode ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.40)" }}>Select Priority</p>
+                          {makePriorityButtons(true)}
                         </div>
                       )}
                     </>);
                   })()}
-                  {dispositionChoice && (() => {
+                  {dispositionChoice && (!dispositionSubmitted || isChangingDisposition) && (() => {
                     const regenerate = () => {
                       if (typeoutRef.current) clearInterval(typeoutRef.current);
                       setRegenerating(true);
@@ -2308,7 +2422,7 @@ export default function Dashboard() {
                       <div style={{ marginTop: 10, marginBottom: 4 }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                           <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", margin: 0, color: darkMode ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.40)" }}>
-                            Comment <span style={{ fontWeight: 400, color: darkMode ? "rgba(255,255,255,0.20)" : "rgba(0,0,0,0.25)" }}>(required)</span>
+                            {isChangingDisposition ? "Updated Comment" : <>Comment <span style={{ fontWeight: 400, color: darkMode ? "rgba(255,255,255,0.20)" : "rgba(0,0,0,0.25)" }}>(required)</span></>}
                           </p>
                           {regenerating ? (
                             <BorderBeamButton
@@ -2319,7 +2433,7 @@ export default function Dashboard() {
                               active={true}
                               onClick={regenerate}
                               className="h-6 gap-1 rounded-md px-2 text-[10px] font-medium border-transparent"
-                              style={{ background: "rgba(9,7,22,0.92)", color: "rgba(255,255,255,0.75)" }}
+                              style={{ background: darkMode ? "rgba(9,7,22,0.92)" : "rgba(255,255,255,0.88)", color: darkMode ? "rgba(255,255,255,0.75)" : "rgba(80,60,160,0.85)" }}
                             >
                               <Sparkles className="h-3 w-3" />
                               Writing…
@@ -2332,14 +2446,16 @@ export default function Dashboard() {
                                 display: "inline-flex", alignItems: "center", gap: 5,
                                 height: 24, padding: "0 9px", borderRadius: 8,
                                 fontSize: 10, fontWeight: 500, cursor: "pointer",
-                                color: "rgba(255,255,255,0.75)",
-                                background: "linear-gradient(160deg, rgba(255,255,255,0.07) 0%, rgba(9,7,22,0.92) 60%) padding-box, linear-gradient(135deg, #818cf8 0%, #c084fc 50%, #f472b6 100%) border-box",
+                                color: darkMode ? "rgba(255,255,255,0.75)" : "rgba(80,60,160,0.90)",
+                                background: darkMode
+                                  ? "linear-gradient(160deg, rgba(255,255,255,0.07) 0%, rgba(9,7,22,0.92) 60%) padding-box, linear-gradient(135deg, #818cf8 0%, #c084fc 50%, #f472b6 100%) border-box"
+                                  : "linear-gradient(160deg, rgba(255,255,255,0.95) 0%, rgba(240,236,255,0.90) 100%) padding-box, linear-gradient(135deg, #818cf8 0%, #c084fc 50%, #f472b6 100%) border-box",
                                 border: "1px solid transparent",
-                                boxShadow: "0 2px 8px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.07)",
+                                boxShadow: darkMode ? "0 2px 8px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.07)" : "0 1px 4px rgba(99,102,241,0.18)",
                               }}
                             >
                               <Sparkles className="h-3 w-3" />
-                              Regenerate
+                              {dispositionComment.trim() ? "Regenerate" : "Generate"}
                             </button>
                           )}
                         </div>
@@ -2353,33 +2469,96 @@ export default function Dashboard() {
                       </div>
                     );
                   })()}
-                  {dispositionSubmitted ? (
-                    <div style={{
-                      marginTop: 6, padding: "12px 14px", borderRadius: 8,
-                      background: dispositionChoice === "false-positive" ? "rgba(34,197,94,0.10)" : dispositionChoice === "true-hit-high" ? "rgba(239,68,68,0.10)" : "rgba(251,191,36,0.10)",
-                      border: `1px solid ${dispositionChoice === "false-positive" ? "rgba(34,197,94,0.30)" : dispositionChoice === "true-hit-high" ? "rgba(239,68,68,0.30)" : "rgba(251,191,36,0.30)"}`,
-                      textAlign: "center",
-                    }}>
-                      <CheckCircle className="h-5 w-5 mx-auto mb-1.5" style={{ color: dispositionChoice === "false-positive" ? "rgb(34,197,94)" : dispositionChoice === "true-hit-high" ? "rgb(239,68,68)" : "rgb(251,191,36)" }} />
-                      <p style={{ fontSize: 12, fontWeight: 600, color: darkMode ? "rgba(255,255,255,0.90)" : "rgba(0,0,0,0.80)" }}>Disposition Submitted</p>
-                      <p style={{ fontSize: 10, marginTop: 3, color: darkMode ? "rgba(255,255,255,0.40)" : "rgba(0,0,0,0.45)" }}>
-                        {dispositionChoice === "false-positive" ? "Cleared as false positive" : dispositionChoice === "true-hit-high" ? "Escalated — high priority" : "Escalated — medium priority"} · {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                      </p>
-                    </div>
-                  ) : (
-                    <button disabled={!dispositionChoice || !dispositionComment.trim()} onClick={() => { if (dispositionChoice && dispositionComment.trim()) setDispositionSubmitted(true); }} style={{
-                      width: "100%", marginTop: 6, padding: "9px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
-                      cursor: dispositionChoice && dispositionComment.trim() ? "pointer" : "not-allowed",
-                      transition: "opacity 0.15s, background 0.15s",
-                      opacity: dispositionChoice && dispositionComment.trim() ? 1 : 0.35,
-                      background: dispositionChoice
-                        ? (dispositionChoice === "false-positive" ? "rgba(34,197,94,0.85)" : dispositionChoice === "true-hit-high" ? "rgba(239,68,68,0.85)" : "rgba(251,191,36,0.85)")
-                        : darkMode ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.08)",
-                      color: dispositionChoice ? "white" : darkMode ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.35)", border: "none",
-                    }}>
-                      Submit Disposition
-                    </button>
-                  )}
+                  {dispositionSubmitted && !isChangingDisposition ? (() => {
+                    const typeLabel  = submittedChoice === "false-positive" ? "False Positive" : submittedChoice === "true-hit-high" ? "True Hit" : "True Hit";
+                    const priorityLabel = submittedChoice === "true-hit-high" ? "High" : submittedChoice === "true-hit-medium" ? "Medium" : null;
+                    const sep = <div style={{ height: 1, background: darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.07)", margin: "10px 0" }} />;
+                    return (
+                      <div style={{ marginTop: 10 }}>
+                        {/* Status row */}
+                        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                              {/* Animated tick */}
+                              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+                                <circle cx="7" cy="7" r="6.5" stroke="rgb(34,197,94)" strokeWidth="1.2" />
+                                <path d="M4 7l2 2 4-4" stroke="rgb(34,197,94)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"
+                                  strokeDasharray="10" strokeDashoffset="10"
+                                  style={{ animation: "dash-draw 0.4s ease-out 0.05s forwards" }} />
+                              </svg>
+                              <span style={{ fontSize: 12, fontWeight: 600, color: darkMode ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.80)" }}>
+                                {typeLabel}{priorityLabel && <span style={{ fontWeight: 400, color: darkMode ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.45)" }}> · {priorityLabel}</span>}
+                              </span>
+                              <span style={{ fontSize: 10, color: darkMode ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.35)" }}>· Submitted</span>
+                            </div>
+                            <p style={{ fontSize: 11, color: darkMode ? "rgba(255,255,255,0.30)" : "rgba(0,0,0,0.35)", margin: 0 }}>VC · {submittedAt}</p>
+                          </div>
+                        </div>
+                        {sep}
+                        {/* Comment */}
+                        <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 5, color: darkMode ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.32)" }}>Comment</p>
+                        <p style={{ fontSize: 12, lineHeight: 1.6, color: darkMode ? "rgba(255,255,255,0.65)" : "rgba(0,0,0,0.65)", margin: 0 }}>{submittedComment}</p>
+                        {sep}
+                        {/* Actions */}
+                        <div style={{ display: "flex", alignItems: "center" }}>
+                          <button onClick={() => setCaseTab("audit")} style={{ fontSize: 11, fontWeight: 500, background: "none", border: "none", cursor: "pointer", color: "#818cf8", display: "flex", alignItems: "center", gap: 3, padding: 0 }}>
+                            View audit trail <ChevronRight style={{ width: 11, height: 11, color: "#818cf8" }} />
+                          </button>
+                          <button onClick={() => { setIsChangingDisposition(true); setDispositionChoice(submittedChoice); setDispositionComment(submittedComment); setTrueHitStep(submittedChoice === "true-hit-high" || submittedChoice === "true-hit-medium"); }}
+                            style={{ fontSize: 11, fontWeight: 500, background: "none", border: "none", cursor: "pointer", color: "#818cf8", padding: 0, marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
+                            <Pencil style={{ width: 10, height: 10, color: "#818cf8" }} />
+                            Change disposition
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })() : (() => {
+                    const isChange = dispositionSubmitted && isChangingDisposition;
+                    const canSubmit = !!dispositionChoice && !!dispositionComment.trim();
+                    const handleSubmit = () => {
+                      if (!dispositionChoice || !dispositionComment.trim()) return;
+                      const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                      const dateStr = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+                      if (isChange) {
+                        const prevLabel = submittedChoice === "false-positive" ? "False Positive" : submittedChoice === "true-hit-high" ? "True Hit · High" : "True Hit · Medium";
+                        const newLabel  = dispositionChoice === "false-positive" ? "False Positive" : dispositionChoice === "true-hit-high" ? "True Hit · High" : "True Hit · Medium";
+                        setAuditLog(prev => [{ title: "Disposition changed", desc: `${prevLabel} → ${newLabel}`, tags: ["Disposition", "Change"], time: `${dateStr}, ${now}` }, ...prev]);
+                      } else {
+                        const label = dispositionChoice === "false-positive" ? "False Positive" : dispositionChoice === "true-hit-high" ? "True Hit · High" : "True Hit · Medium";
+                        setAuditLog(prev => [{ title: "Disposition submitted", desc: `${label} by VC.`, tags: ["Disposition"], time: `${dateStr}, ${now}` }, ...prev]);
+                      }
+                      setSubmittedAt(now);
+                      setSubmittedChoice(dispositionChoice);
+                      setSubmittedComment(dispositionComment);
+                      setDispositionSubmitted(true);
+                      setIsChangingDisposition(false);
+                    };
+                    return (<>
+                      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                        {isChange && (
+                          <button onClick={() => { setIsChangingDisposition(false); setDispositionChoice(submittedChoice); setDispositionComment(submittedComment); setTrueHitStep(false); }} style={{
+                            padding: "9px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                            background: darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)",
+                            color: darkMode ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.50)", border: "none",
+                          }}>Cancel</button>
+                        )}
+                        <button disabled={!canSubmit} onClick={handleSubmit} style={{
+                          flex: 1, padding: "9px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                          cursor: canSubmit ? "pointer" : "not-allowed",
+                          transition: "opacity 0.15s, background 0.15s",
+                          opacity: canSubmit ? 1 : 0.35,
+                          background: dispositionChoice
+                            ? (darkMode
+                                ? (dispositionChoice === "false-positive" ? "rgba(22,163,74,0.55)" : dispositionChoice === "true-hit-high" ? "rgba(185,28,28,0.70)" : "rgba(161,98,7,0.55)")
+                                : (dispositionChoice === "false-positive" ? "rgb(22,163,74)" : dispositionChoice === "true-hit-high" ? "rgb(185,28,28)" : "rgb(161,98,7)"))
+                            : darkMode ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.08)",
+                          color: dispositionChoice ? "rgba(255,255,255,0.95)" : darkMode ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.35)", border: "none",
+                        }}>
+                          {isChange ? "Re-submit Disposition" : "Submit Disposition"}
+                        </button>
+                      </div>
+                    </>);
+                  })()}
                 </div>
                 </>)}
               </div>
@@ -2428,9 +2607,9 @@ export default function Dashboard() {
 
               {/* ── Audit Trail tab ── */}
               {caseTab === "audit" && (() => {
-                const entries = [
+                const staticEntries = [
                   {
-                    title: `Case reviewed by Ruby Tan`,
+                    title: `Case reviewed by Victor Chee`,
                     desc: "Confidence score and network links reviewed. Case flagged for senior sign-off.",
                     tags: ["Confidence", "Network links"],
                     time: "8 Sep 2026, 3:12pm",
@@ -2448,6 +2627,7 @@ export default function Dashboard() {
                     time: selectedCase.time,
                   },
                 ];
+                const entries = [...auditLog, ...staticEntries];
 
                 return (
                   <div className="absolute inset-0 overflow-y-auto px-8 py-6" style={{ zIndex:1 }}>
@@ -2544,7 +2724,7 @@ export default function Dashboard() {
                         value={chatInput}
                         onChange={e => setChatInput(e.target.value)}
                         onKeyDown={e => { if (e.key === "Enter") handleSend(); }}
-                        placeholder="Ask your Fraud Agent Anything"
+                        placeholder="Ask Casework Agent anything"
                         className={`flex-1 bg-transparent text-sm focus:outline-none ${dm("text-gray-900 placeholder-gray-400","text-slate-200 placeholder-gray-600")}`}
                       />
                       <button
