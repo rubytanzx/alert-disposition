@@ -1,0 +1,74 @@
+/* ── BorderGlow ──────────────────────────────────────────────────────── */
+
+@property --cursor-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@property --edge-proximity {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+
+.border-glow-card {
+  position: relative;
+  border-radius: var(--border-radius, 28px);
+  padding: 1px;
+  box-sizing: border-box;
+}
+
+.edge-light {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+
+  /* Cone of light centered on the cursor direction from card center */
+  background: conic-gradient(
+    from calc(var(--cursor-angle, 0deg) - calc(var(--cone-spread, 25) * 1deg)) at 50% 50%,
+    var(--glow-color-10, transparent) 0deg,
+    var(--glow-color, transparent) calc(var(--cone-spread, 25) * 1deg),
+    var(--glow-color-10, transparent) calc(var(--cone-spread, 25) * 2deg),
+    transparent calc(var(--cone-spread, 25) * 2deg + 1deg),
+    transparent 360deg
+  );
+
+  /* Mask: reveal only the 1 px border ring, hide the interior */
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 1px;
+
+  /* Fade in as the cursor approaches the card edge */
+  opacity: clamp(
+    0,
+    calc(
+      (var(--edge-proximity, 0) - (100 - var(--edge-sensitivity, 30))) /
+      var(--edge-sensitivity, 30)
+    ),
+    1
+  );
+}
+
+.border-glow-inner {
+  position: relative;
+  border-radius: calc(var(--border-radius, 28px) - 1px);
+  overflow: hidden;
+  background:
+    var(--gradient-one,   transparent),
+    var(--gradient-two,   transparent),
+    var(--gradient-three, transparent),
+    var(--gradient-four,  transparent),
+    var(--gradient-five,  transparent),
+    var(--gradient-six,   transparent),
+    var(--gradient-seven, transparent),
+    var(--card-bg, #120F17);
+}
+
+.border-glow-card--light .edge-light {
+  filter: saturate(1.4);
+}
