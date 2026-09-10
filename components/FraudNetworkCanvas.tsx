@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type React from "react";
 import DotField from "./DotField";
 
@@ -9,6 +9,7 @@ export interface FraudNode {
   risk:         "critical" | "high" | "medium" | "low";
   nodeType?:    "attribute" | "person";
   attrIcon?:    "name" | "dob" | "id" | "address" | "bank" | "news" | "source";
+  attrGroup?:   "primary" | "secondary";
   matchScore?:  number;
   matchFields?: { field: string; customer: string; watchlist: string; match: boolean }[];
   matchedAttributeIndices?: number[];
@@ -26,9 +27,32 @@ interface Props {
   dark?:             boolean;
   className?:        string;
   style?:            React.CSSProperties;
-  onNodeClick?:      (node: FraudNode) => void;
+  onNodeClick?:       (node: FraudNode) => void;
   selectedNodeLabel?: string;
-  controlsRight?:    number;
+  activeNodeLabels?:  string[];  // additional nodes to keep highlighted (not dimmed)
+  highlightAttrLabel?: string;  // attr node to highlight as if selected from external pane
+  controlsRight?:     number;
+}
+
+// ── Source → flag label mapping ────────────────────────────────────────────────
+function sourceToFlags(source: string): string {
+  const s = source.toLowerCase();
+  const flags: string[] = [];
+  // Sanctions
+  if (s.includes("ofac") || s.includes("sdn") || s.includes("eu sanction") || s.includes("world bank")) flags.push("Sanctioned");
+  if (s.includes("un sanction") || (s === "un")) flags.push("Sanctioned");
+  // PEP dimension — pick most specific, no duplicates
+  if (s.includes("un pep") || s.includes("eu pep")) flags.push("Foreign PEP");
+  else if (s.includes("domestic pep")) flags.push("Domestic PEP");
+  else if (s.includes("pep")) flags.push("PEP");
+  // PEP RCA — not in current sublabels but handled for future
+  if (s.includes("rca")) flags.push("PEP RCA");
+  // Legal Enforcement Action
+  if (s.includes("interpol") || s.includes("adverse")) flags.push("Legal Enforcement Action");
+  if (s.includes("world bank")) flags.push("Legal Enforcement Action");
+  // Deduplicate
+  const unique = [...new Set(flags)];
+  return unique.length > 0 ? unique.join(" · ") : source;
 }
 
 // ── Canvas helpers ─────────────────────────────────────────────────────────────
@@ -122,8 +146,19 @@ function drawAttrIcon(ctx: CanvasRenderingContext2D, x: number, y: number, type:
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export default function FraudNetworkCanvas({
-  centerLabel, centerSublabel, nodes, dark = true, className = "", style, onNodeClick, selectedNodeLabel, controlsRight = 16,
+  centerLabel, centerSublabel, nodes: rawNodes, dark = true, className = "", style, onNodeClick, selectedNodeLabel, activeNodeLabels, highlightAttrLabel, controlsRight = 16,
 }: Props) {
+  const [showPrimary,   setShowPrimary]   = useState(true);
+  const [showSecondary, setShowSecondary] = useState(true);
+  const [showSources,   setShowSources]   = useState(true);
+
+  const nodes = rawNodes.filter(n => {
+    if (n.nodeType !== "attribute") return true;
+    if (n.attrIcon === "source") return showSources;
+    if (n.attrGroup === "primary")   return showPrimary;
+    if (n.attrGroup === "secondary") return showSecondary;
+    return true;
+  });
   const containerRef       = useRef<HTMLDivElement>(null);
   const canvasRef          = useRef<HTMLCanvasElement>(null);
   const rafRef             = useRef(0);
@@ -140,6 +175,10 @@ export default function FraudNetworkCanvas({
   const hasDraggedRef      = useRef(false);
   const onNodeClickRef     = useRef(onNodeClick);
   onNodeClickRef.current   = onNodeClick;
+  const activeNodeLabelsRef = useRef(activeNodeLabels);
+  activeNodeLabelsRef.current = activeNodeLabels;
+  const highlightAttrLabelRef = useRef(highlightAttrLabel);
+  highlightAttrLabelRef.current = highlightAttrLabel;
   const posRef             = useRef<{ x: number; y: number }[]>([]);
   const prevPosRef         = useRef<{ x: number; y: number }[]>([]);
   const layoutTransRef     = useRef(1); // 0→1 ease for layout transitions
@@ -284,27 +323,35 @@ export default function FraudNetworkCanvas({
 
       // Grey nodes: interpolate into the angular gaps between adjacent primary nodes.
       // sortedAngles = primary angles in ascending order → defines the gaps.
-      if (secondaryIdx.length > 0 && primAngles.length > 0) {
-        const sorted = [...primAngles].sort((a, b) => a - b);
-        // Build gap list; for a full horseshoe (no wrap) use only interior gaps.
-        const isCircle = primaryIdx.length >= 9;
-        const gaps: [number, number][] = [];
-        for (let i = 0; i < sorted.length - 1; i++) gaps.push([sorted[i], sorted[i + 1]]);
-        if (isCircle) gaps.push([sorted[sorted.length - 1], sorted[0] + Math.PI * 2]);
+      if (secondaryIdx.length > 0) {
+        if (primAngles.length <= 1) {
+          // 0 or 1 primary — place secondaries in their own top-centred arc at secondaryR
+          const secAngles = getArcAngles(secondaryIdx.length);
+          secondaryIdx.forEach((nodeIdx, k) => {
+            const a = secAngles[k] ?? -(Math.PI / 2);
+            finalPos[nodeIdx] = { x: cx + Math.cos(a) * secondaryR, y: cy + Math.sin(a) * secondaryR };
+          });
+        } else {
+          const sorted = [...primAngles].sort((a, b) => a - b);
+          const isCircle = primaryIdx.length >= 9;
+          const gaps: [number, number][] = [];
+          for (let i = 0; i < sorted.length - 1; i++) gaps.push([sorted[i], sorted[i + 1]]);
+          if (isCircle) gaps.push([sorted[sorted.length - 1], sorted[0] + Math.PI * 2]);
 
-        // Distribute grey nodes round-robin across gaps (1 per gap, cycling)
-        const gapCounts = new Array(gaps.length).fill(0);
-        secondaryIdx.forEach((_, j) => { gapCounts[j % gaps.length]++; });
+          // Distribute grey nodes round-robin across gaps (1 per gap, cycling)
+          const gapCounts = new Array(gaps.length).fill(0);
+          secondaryIdx.forEach((_, j) => { gapCounts[j % gaps.length]++; });
 
-        let gi = 0;
-        gaps.forEach(([start, end], g) => {
-          for (let j = 0; j < gapCounts[g]; j++) {
-            const step = (end - start) / (gapCounts[g] + 1);
-            const a = start + step * (j + 1);
-            finalPos[secondaryIdx[gi]] = { x: cx + Math.cos(a) * secondaryR, y: cy + Math.sin(a) * secondaryR };
-            gi++;
-          }
-        });
+          let gi = 0;
+          gaps.forEach(([start, end], g) => {
+            for (let j = 0; j < gapCounts[g]; j++) {
+              const step = (end - start) / (gapCounts[g] + 1);
+              const a = start + step * (j + 1);
+              finalPos[secondaryIdx[gi]] = { x: cx + Math.cos(a) * secondaryR, y: cy + Math.sin(a) * secondaryR };
+              gi++;
+            }
+          });
+        }
       }
 
       // Identity attrs: bottom-half arc centred at 6 o'clock
@@ -332,9 +379,36 @@ export default function FraudNetworkCanvas({
           if (!byOwner.has(ownerIdx)) byOwner.set(ownerIdx, []);
           byOwner.get(ownerIdx)!.push(nodeIdx);
         });
+        // Collect owned angles so unowned group can avoid them
+        const ownedAngles: number[] = [];
+        byOwner.forEach((_, ownerIdx) => {
+          if (ownerIdx < 0) return;
+          const op = finalPos[ownerIdx];
+          if (op) ownedAngles.push(Math.atan2(op.y - cy, op.x - cx));
+        });
         byOwner.forEach((nodeIndices, ownerIdx) => {
-          const ownerPos  = ownerIdx >= 0 ? finalPos[ownerIdx] : null;
-          const baseAngle = ownerPos ? Math.atan2(ownerPos.y - cy, ownerPos.x - cx) : -(Math.PI / 2);
+          let baseAngle: number;
+          if (ownerIdx >= 0) {
+            const op = finalPos[ownerIdx];
+            baseAngle = op ? Math.atan2(op.y - cy, op.x - cx) : -(Math.PI / 2);
+          } else {
+            // Pick the angle maximally far from all owned positions
+            if (ownedAngles.length === 0) {
+              baseAngle = -(Math.PI / 2);
+            } else {
+              // Sample candidate angles and pick the one with the largest min-distance to any owned angle
+              let best = -(Math.PI / 2), bestDist = -1;
+              for (let s = 0; s < 36; s++) {
+                const cand = -Math.PI + s * (Math.PI * 2 / 36);
+                const minD = Math.min(...ownedAngles.map(a => {
+                  const d = Math.abs(cand - a);
+                  return Math.min(d, Math.PI * 2 - d);
+                }));
+                if (minD > bestDist) { bestDist = minD; best = cand; }
+              }
+              baseAngle = best;
+            }
+          }
           const count     = nodeIndices.length;
           const fanSpread = count <= 1 ? 0 : Math.min(Math.PI * 0.42, count * 0.22);
           nodeIndices.forEach((nodeIdx, k) => {
@@ -373,6 +447,16 @@ export default function FraudNetworkCanvas({
       const hovIdx = hoveredIdxRef.current;
       const selIdx = selectedPersonRef.current;
       const selNode = selIdx >= 0 ? nodes[selIdx] : null;
+
+      // Trim a line so it starts r1 px from (x1,y1) and ends r2 px from (x2,y2)
+      const trimLine = (x1: number, y1: number, x2: number, y2: number, r1: number, r2: number) => {
+        const dx = x2 - x1, dy = y2 - y1;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const ux = dx / dist, uy = dy / dist;
+        return { sx: x1 + ux * r1, sy: y1 + uy * r1, ex: x2 - ux * r2, ey: y2 - uy * r2 };
+      };
+      const CX_R = 20; // centre-node radius
+      const ND_R = 16; // person-node radius
 
       ctx.save();
       ctx.scale(dpr, dpr);
@@ -437,14 +521,23 @@ export default function FraudNetworkCanvas({
         const isHovered = i === hovIdx;
 
         // Per-node match state (used for both line and node rendering)
+        const activeLabels  = activeNodeLabelsRef.current;
+        const activeIdxSet  = activeLabels
+          ? new Set(nodes.map((nd, idx) => activeLabels.includes(nd.label) ? idx : -1).filter(idx => idx >= 0))
+          : null;
+        const isActiveNode  = activeIdxSet ? activeIdxSet.has(i) : false;
+        const attrMatchedByAny = isAttr && activeIdxSet
+          ? [...activeIdxSet].some(idx => (nodes[idx]?.matchedAttributeIndices ?? []).includes(i))
+          : false;
         const attrMatched = isAttr && selNode && !outerOwnerDisposed
           ? (selNode.matchedAttributeIndices ?? []).includes(i)
           : false;
+        const attrHighlighted = attrMatched || attrMatchedByAny;
 
         // Line alpha — forced-auto nodes keep their lines visible regardless of selection
         let lineAlpha = 1;
-        if (selNode && !isAttr && i !== selIdx && !node.isForcedAuto) lineAlpha = 0.45;
-        if (selNode && isAttr && !attrMatched)  lineAlpha = 0.45;
+        if (selNode && !isAttr && i !== selIdx && !node.isForcedAuto && !isActiveNode) lineAlpha = 0.45;
+        if (selNode && isAttr && !attrHighlighted) lineAlpha = 0.45;
         if (!isAttr && node.isDisposed && !node.isTrueHit) lineAlpha *= 0.30;
         if (isOuterAttr && outerOwnerDisposed)  lineAlpha = 0.10;
 
@@ -499,13 +592,14 @@ export default function FraudNetworkCanvas({
           }
         } else if (isAttr) {
           // ── Identity attr lines: from center ──
-          const ex = cx + (p.x - cx) * rlp;
-          const ey = cy + (p.y - cy) * rlp;
+          const { sx: asx, sy: asy, ex: aex, ey: aey } = trimLine(cx, cy, p.x, p.y, CX_R, ND_R);
+          const exA = asx + (aex - asx) * rlp;
+          const eyA = asy + (aey - asy) * rlp;
           ctx.globalAlpha = rlp * lineAlpha;
           ctx.setLineDash([]);
           ctx.strokeStyle = dark ? "rgba(99,102,241,0.75)" : "rgba(99,102,241,0.80)";
           ctx.lineWidth   = 1.2;
-          ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(asx, asy); ctx.lineTo(exA, eyA); ctx.stroke();
 
           if (attrMatched && lp >= 1) {
             const bColor  = riskColor(selNode!.risk);
@@ -513,10 +607,10 @@ export default function FraudNetworkCanvas({
             const halfLen = 0.22;
             const t0 = Math.max(0, beamT - halfLen);
             const t1 = Math.min(1, beamT + halfLen);
-            const bx0 = cx + (p.x - cx) * t0, by0 = cy + (p.y - cy) * t0;
-            const bx1 = cx + (p.x - cx) * t1, by1 = cy + (p.y - cy) * t1;
-            const bhx = cx + (p.x - cx) * Math.min(1, beamT + halfLen * 0.6);
-            const bhy = cy + (p.y - cy) * Math.min(1, beamT + halfLen * 0.6);
+            const bx0 = asx + (aex - asx) * t0, by0 = asy + (aey - asy) * t0;
+            const bx1 = asx + (aex - asx) * t1, by1 = asy + (aey - asy) * t1;
+            const bhx = asx + (aex - asx) * Math.min(1, beamT + halfLen * 0.6);
+            const bhy = asy + (aey - asy) * Math.min(1, beamT + halfLen * 0.6);
             const beamGrad = ctx.createLinearGradient(bx0, by0, bx1, by1);
             beamGrad.addColorStop(0,   bColor + "00");
             beamGrad.addColorStop(0.4, bColor + "bb");
@@ -534,16 +628,18 @@ export default function FraudNetworkCanvas({
           }
         } else if (!isAttr && node.isLoading) {
           // ── Skeleton person: faint pulsing dashed spoke ──
-          const ex = cx + (p.x - cx) * lp, ey = cy + (p.y - cy) * lp;
+          const { sx: lsx, sy: lsy, ex: lex, ey: ley } = trimLine(cx, cy, p.x, p.y, CX_R, ND_R);
+          const exL = lsx + (lex - lsx) * lp, eyL = lsy + (ley - lsy) * lp;
           const sk = (Math.sin(timeRef.current * 2.4 + i * 0.7) + 1) / 2;
           ctx.globalAlpha = lp * (0.12 + sk * 0.14);
           ctx.setLineDash([3, 7]);
           ctx.strokeStyle = dark ? "rgba(129,140,248,0.90)" : "rgba(99,102,241,0.70)";
           ctx.lineWidth = 0.8;
-          ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(lsx, lsy); ctx.lineTo(exL, eyL); ctx.stroke();
         } else if (!isAttr && auto) {
           // ── Auto-disposed person: faint dotted spoke ──
-          const ex = cx + (p.x - cx) * rlp, ey = cy + (p.y - cy) * rlp;
+          const { sx: dsx, sy: dsy, ex: dex, ey: dey } = trimLine(cx, cy, p.x, p.y, CX_R, ND_R);
+          const exD = dsx + (dex - dsx) * rlp, eyD = dsy + (dey - dsy) * rlp;
           ctx.globalAlpha = rlp * lineAlpha;
           ctx.setLineDash(isHovered ? [4, 5] : [3, 6]);
           ctx.lineDashOffset = isHovered ? -(time * 18) : 0;
@@ -551,17 +647,18 @@ export default function FraudNetworkCanvas({
             ? (dark ? "rgba(156,163,175,0.90)" : "rgba(99,102,241,0.85)")
             : (dark ? "rgba(156,163,175,0.50)" : "rgba(99,102,241,0.55)");
           ctx.lineWidth = isHovered ? 1.1 : 0.9;
-          ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(dsx, dsy); ctx.lineTo(exD, eyD); ctx.stroke();
         } else {
           // ── Critical / high: very faint solid spoke, risk-tinted ──
-          const ex = cx + (p.x - cx) * rlp, ey = cy + (p.y - cy) * rlp;
+          const { sx: hsx, sy: hsy, ex: hex, ey: hey } = trimLine(cx, cy, p.x, p.y, CX_R, ND_R);
+          const exH = hsx + (hex - hsx) * rlp, eyH = hsy + (hey - hsy) * rlp;
           ctx.globalAlpha = rlp * lineAlpha;
           const sColor = riskColor(node.risk);
           const isActive = isHovered || i === selIdx;
           ctx.setLineDash([]);
           ctx.strokeStyle = isActive ? sColor + "ee" : sColor + "99";
           ctx.lineWidth = isActive ? 1.5 : 1.1;
-          ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(hsx, hsy); ctx.lineTo(exH, eyH); ctx.stroke();
 
           // Beam on hover or selection (person nodes only)
           if (isActive && lp >= 1) {
@@ -570,10 +667,10 @@ export default function FraudNetworkCanvas({
             const halfLen = 0.22;
             const t0 = Math.max(0, beamT - halfLen);
             const t1 = Math.min(1, beamT + halfLen);
-            const bx0 = cx + (p.x - cx) * t0, by0 = cy + (p.y - cy) * t0;
-            const bx1 = cx + (p.x - cx) * t1, by1 = cy + (p.y - cy) * t1;
-            const bhx = cx + (p.x - cx) * Math.min(1, beamT + halfLen * 0.6);
-            const bhy = cy + (p.y - cy) * Math.min(1, beamT + halfLen * 0.6);
+            const bx0 = hsx + (hex - hsx) * t0, by0 = hsy + (hey - hsy) * t0;
+            const bx1 = hsx + (hex - hsx) * t1, by1 = hsy + (hey - hsy) * t1;
+            const bhx = hsx + (hex - hsx) * Math.min(1, beamT + halfLen * 0.6);
+            const bhy = hsy + (hey - hsy) * Math.min(1, beamT + halfLen * 0.6);
             const beamGrad = ctx.createLinearGradient(bx0, by0, bx1, by1);
             beamGrad.addColorStop(0,   bColor + "00");
             beamGrad.addColorStop(0.4, bColor + "bb");
@@ -636,15 +733,32 @@ export default function FraudNetworkCanvas({
           : false;
 
         // Opacity: dim non-selected person nodes when a selection exists
+        const activeLabelsN  = activeNodeLabelsRef.current;
+        const activeIdxSetN  = activeLabelsN
+          ? new Set(nodes.map((nd, idx) => activeLabelsN.includes(nd.label) ? idx : -1).filter(idx => idx >= 0))
+          : null;
+        const isActiveNodeN  = activeIdxSetN ? activeIdxSetN.has(i) : false;
+        const attrMatchedByAnyN = isAttr && activeIdxSetN
+          ? [...activeIdxSetN].some(idx => (nodes[idx]?.matchedAttributeIndices ?? []).includes(i))
+          : false;
         let nodeAlpha = np;
         // Forced-auto nodes stay visible regardless of selection — don't apply selection dimming
-        if (selNode && !isAttr && i !== selIdx && !node.isForcedAuto) nodeAlpha = np * 0.50;
+        if (selNode && !isAttr && i !== selIdx && !node.isForcedAuto && !isActiveNodeN) {
+          const isVivid = risk === "critical" || risk === "high";
+          nodeAlpha = np * (isVivid ? 0.25 : 0.50);
+        }
         if (selNode && isAttr) {
-          const matched = (selNode.matchedAttributeIndices ?? []).includes(i);
+          const matched = (selNode.matchedAttributeIndices ?? []).includes(i) || attrMatchedByAnyN;
           if (!matched) nodeAlpha = np * 0.30;
         }
         if (!isAttr && node.isDisposed && !node.isTrueHit) nodeAlpha *= 0.55;
         if (isOuterAttrN && outerOwnerDisposedN) nodeAlpha = np * 0.15;
+        // Dim non-selected news nodes when a news node is highlighted — keep stroke treatment
+        const hl = highlightAttrLabelRef.current;
+        if (isAttr && node.attrIcon === "news" && hl && node.label !== hl) {
+          const hlIsNews = nodesRef.current.some(nd => nd.attrIcon === "news" && nd.label === hl);
+          if (hlIsNews) nodeAlpha = Math.min(nodeAlpha, np * 0.35);
+        }
         ctx.globalAlpha = nodeAlpha;
 
         if (isAttr && node.isLoading) {
@@ -679,10 +793,6 @@ export default function FraudNetworkCanvas({
           const hh = 16, cr = 9;
           const x0 = p.x - pillW / 2, y0 = p.y - hh;
 
-          // Determine colors based on selection state
-          const matched = selNode ? (selNode.matchedAttributeIndices ?? []).includes(i) : false;
-          const glowC   = matched ? riskColor(selNode!.risk) : null;
-
           const iconTints: Record<string, string> = {
             name:    "#818cf8",
             dob:     "#a78bfa",
@@ -693,6 +803,10 @@ export default function FraudNetworkCanvas({
             source:  "#4ade80",
           };
           const baseTint   = iconTints[iconKey] ?? "#818cf8";
+          const highlighted = node.label === highlightAttrLabelRef.current;
+          const glowC   = (selNode ? (selNode.matchedAttributeIndices ?? []).includes(i) : false)
+            ? riskColor(selNode!.risk)
+            : highlighted ? baseTint : null;
           const activeTint = glowC ?? baseTint;
 
           const pillBg     = dark ? "rgba(14,12,30,0.90)" : "rgba(247,245,255,0.94)";
@@ -745,7 +859,7 @@ export default function FraudNetworkCanvas({
 
         } else if (node.isLoading) {
           // ── Skeleton person node: pulsing indigo ghost circle ────────────────
-          const r  = 13;
+          const r  = 16;
           const sk = (Math.sin(time * 2.2 + i * 1.1) + 1) / 2;
           // Outer glow ring
           ctx.globalAlpha = nodeAlpha * (0.08 + sk * 0.12);
@@ -768,7 +882,7 @@ export default function FraudNetworkCanvas({
           // ── Person node ──────────────────────────────────────────────────────
           // Force-auto nodes (pushed to ring 3 after a true-hit) use grey regardless of original risk
           const bColor   = node.isForcedAuto ? "#6b7280" : riskColor(risk);
-          const r        = 13;
+          const r        = 16;
           const isHov    = i === hovIdx;
 
           // Forced-auto nodes stay at reasonable visibility; organic auto (med/low) dims more
@@ -818,7 +932,9 @@ export default function FraudNetworkCanvas({
             ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
             ctx.strokeStyle = bColor;
             ctx.lineWidth   = 2 + (i === selIdx ? 0.5 : 0);
+            if (node.isForcedAuto) { ctx.setLineDash([3, 3]); } else { ctx.setLineDash([]); }
             ctx.stroke();
+            ctx.setLineDash([]);
 
             const iconColor = auto
               ? (dark ? "rgba(156,163,175,0.70)" : "rgba(80,80,120,0.60)")
@@ -851,7 +967,7 @@ export default function FraudNetworkCanvas({
             if (hasSubl) {
               ctx.font      = `${subSize}px -apple-system,system-ui,sans-serif`;
               ctx.fillStyle = dark ? "rgba(255,255,255,0.42)" : "rgba(0,0,0,0.38)";
-              ctx.fillText(node.sublabel!, p.x, ly + lineH);
+              ctx.fillText(sourceToFlags(node.sublabel!), p.x, ly + lineH);
             }
           }
         }
@@ -933,11 +1049,18 @@ export default function FraudNetworkCanvas({
       };
     };
 
+    const PILL_W = 100, PILL_H = 16; // attr pill half-dimensions
     const hitNode = (cx: number, cy: number, radius = 28) => {
       let idx = -1, best = radius;
       posRef.current.forEach((p, i) => {
-        const d = Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2);
-        if (d < best) { idx = i; best = d; }
+        const node = nodesRef.current[i];
+        if (node?.nodeType === "attribute") {
+          // Rect hit test for pill nodes
+          if (Math.abs(cx - p.x) <= PILL_W / 2 && Math.abs(cy - p.y) <= PILL_H) idx = i;
+        } else {
+          const d = Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2);
+          if (d < best) { idx = i; best = d; }
+        }
       });
       return idx;
     };
@@ -958,9 +1081,12 @@ export default function FraudNetworkCanvas({
     const onMouseMove = (e: MouseEvent) => {
       if (nodeDragRef.current) {
         const { x: cx, y: cy } = toCanvas(e.clientX, e.clientY);
-        const { nodeIdx } = nodeDragRef.current;
-        nodeOverridesRef.current.set(nodeIdx, { x: cx, y: cy });
-        hasDraggedRef.current = true;
+        const { nodeIdx, startCx, startCy } = nodeDragRef.current;
+        const dist = Math.sqrt((cx - startCx) ** 2 + (cy - startCy) ** 2);
+        if (dist > 4) {
+          nodeOverridesRef.current.set(nodeIdx, { x: cx, y: cy });
+          hasDraggedRef.current = true;
+        }
         return;
       }
       if (dragRef.current) {
@@ -1053,6 +1179,42 @@ export default function FraudNetworkCanvas({
         gradientFrom="#A855F7" gradientTo="#B497CF" glowColor="#120F17"
       />
       <canvas ref={canvasRef} style={{ position: "absolute", inset: 0 }} />
+
+      {/* ── Top-left: title + filter toggles ── */}
+      <div style={{ position: "absolute", top: 16, left: 16, zIndex: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+        <span style={{
+          fontSize: 9, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase",
+          color: dark ? "rgba(255,255,255,0.30)" : "rgba(0,0,0,0.30)",
+        }}>Network View</span>
+        <div style={{ display: "flex", gap: 4 }}>
+          {([
+            { label: "Primary",   active: showPrimary,   set: setShowPrimary   },
+            { label: "Secondary", active: showSecondary, set: setShowSecondary },
+            { label: "Sources",   active: showSources,   set: setShowSources   },
+          ] as const).map(({ label, active, set }) => (
+            <button
+              key={label}
+              onClick={() => set(v => !v)}
+              style={{
+                fontSize: 9, fontWeight: 600, letterSpacing: "0.04em",
+                padding: "3px 7px", borderRadius: 99, cursor: "pointer",
+                border: `1px solid ${dark
+                  ? (active ? "rgba(139,92,246,0.50)" : "rgba(255,255,255,0.12)")
+                  : (active ? "rgba(99,102,241,0.35)"  : "rgba(0,0,0,0.12)")}`,
+                background: dark
+                  ? (active ? "rgba(139,92,246,0.18)" : "rgba(255,255,255,0.06)")
+                  : (active ? "rgba(99,102,241,0.10)"  : "rgba(0,0,0,0.04)"),
+                color: dark
+                  ? (active ? "rgba(196,181,253,0.90)" : "rgba(255,255,255,0.28)")
+                  : (active ? "rgba(79,70,229,0.90)"   : "rgba(0,0,0,0.28)"),
+                backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
+                transition: "all 0.15s",
+              }}
+            >{label}</button>
+          ))}
+        </div>
+      </div>
+
       <div style={{ position: "absolute", top: 16, right: controlsRight, zIndex: 10, display: "flex", flexDirection: "column", gap: 4, transition: "right 0.25s ease" }}>
         <button onClick={zoomIn} style={btnBase} title="Zoom in"
           onMouseEnter={e => (e.currentTarget.style.background = dark ? "rgba(255,255,255,0.14)" : "rgba(240,240,255,0.95)")}

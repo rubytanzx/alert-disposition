@@ -12,11 +12,11 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { useState, useEffect, useRef, useMemo, type ReactNode } from "react";
+import { useState, useEffect, useRef, useMemo, Fragment, type ReactNode } from "react";
 import {
   AlertTriangle, ArrowLeft, ArrowRight, ArrowUp, Bell, Building2, Check, CheckCircle, ChevronDown, ChevronLeft, ChevronRight,
   ExternalLink, Eye, EyeOff, FileText, Flame, Globe, Inbox, Moon, PanelLeftClose, PanelLeftOpen, PanelRightClose, Pencil,
-  LogOut, Pin, Search, Settings, ShieldAlert, ShieldCheck, Sparkles, Sun, ThumbsDown, ThumbsUp, User, Users, X, XCircle,
+  Landmark, LogOut, Pin, Search, Settings, ShieldAlert, ShieldCheck, Sparkles, Sun, ThumbsDown, ThumbsUp, User, Users, Wrench, X, XCircle,
 } from "lucide-react";
 import { BorderBeamButton, BorderBeamIconButton } from "@/components/ui/border-beam-button";
 import { AIReasoningLoader } from "@/components/ui/ai-reasoning-loader";
@@ -76,12 +76,15 @@ function useCountUp(end: number, delay = 0) {
   return val;
 }
 
-function StatCard({ icon: Icon, end, label, change, up, index, dark = false }: {
-  icon: React.ElementType; end: number; label: string; change: string; up: boolean; index: number; dark?: boolean;
+function StatCard({ icon: Icon, end, label, change, variant = "neutral", index, dark = false }: {
+  icon: React.ElementType; end: number; label: string; change: string; variant?: "neutral" | "alert"; index: number; dark?: boolean;
 }) {
   const value = useCountUp(end, 150 + index * 100);
   const [visible, setVisible] = useState(false);
   useEffect(() => { const t = setTimeout(() => setVisible(true), 80 + index * 60); return () => clearTimeout(t); }, [index]);
+  const changeColor = variant === "alert"
+    ? (dark ? "#fb923c" : "#d97706")
+    : (dark ? "rgba(167,139,250,1)" : "rgba(79,70,229,1)");
   return (
     <div style={{
       opacity: visible ? 1 : 0,
@@ -102,7 +105,7 @@ function StatCard({ icon: Icon, end, label, change, up, index, dark = false }: {
         </div>
         <p className={`text-[1.75rem] font-bold leading-none mb-1 ${dark ? "text-slate-100" : "text-gray-900"}`}>{value}</p>
         <p className={`text-xs leading-snug mb-auto pb-3 ${dark ? "text-gray-400" : "text-gray-500"}`}>{label}</p>
-        <p className={`text-xs font-medium ${up ? (dark ? "text-red-400" : "text-red-600") : (dark ? "text-green-400" : "text-green-600")}`}>{change}</p>
+        <p className="text-xs font-medium" style={{ color: changeColor }}>{change}</p>
       </div>
     </div>
   );
@@ -161,85 +164,168 @@ const entities = [
 
 const CASE_NODES: Record<number, FraudNode[]> = {
   // Li Bin — OFAC SDN, Critical
-  // Watchlist persons only — click a node to compare against customer profile
+  // Customer: Name "Li Bin" · YOB 1975 · COB China · DOB 12 Jul · Gender Male · Nationality PRC · Occupation Executive · Address Shanghai, PRC
   1: [
     // 0 — exact format match
     { label: "LI, Bin",        sublabel: "OFAC SDN",    risk: "critical", nodeType: "person" as const, matchScore: 90, matchedAttributeIndices: [8,9,10,11,12,13,14],
       matchFields: [
-        { field: "Full name",      customer: "LI, Bin",           watchlist: "LI, Bin",           match: true  },
-        { field: "Date of birth",  customer: "12 Jul 1975",       watchlist: "12 Jul 1975",       match: true  },
-        { field: "Nationality",    customer: "PRC",               watchlist: "PRC",               match: true  },
-        { field: "Country",        customer: "China",             watchlist: "China",             match: true  },
-        { field: "Gender",         customer: "Male",              watchlist: "Male",              match: true  },
-        { field: "Address",        customer: "Shanghai, PRC",     watchlist: "Shanghai, PRC",     match: true  },
-        { field: "Employer",       customer: "CITIC Group",       watchlist: "CITIC Group Corp",  match: true  },
-        { field: "Occupation",     customer: "Executive",         watchlist: "Executive",         match: true  },
-        { field: "Former name",    customer: "N/A",               watchlist: "N/A",               match: true  },
-        { field: "Alias",          customer: "N/A",               watchlist: "Li Bing",           match: false },
+        { field: "Name",                        customer: "Li Bin",           watchlist: "LI, Bin",          match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1975",             watchlist: "1975",             match: true  },
+        { field: "Country of Birth",            customer: "China",            watchlist: "China",            match: true  },
+        { field: "Day of Birth (DOB)",          customer: "12 Jul",           watchlist: "12 Jul",           match: true  },
+        { field: "Deceased Status",             customer: "FALSE",            watchlist: "FALSE",            match: true  },
+        { field: "Primary Name",               customer: "LI, Bin",          watchlist: "LI, Bin",          match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",              watchlist: "Li Bing",          match: false },
+        { field: "Gender",                      customer: "Male",             watchlist: "Male",             match: true  },
+        { field: "Nationality",                 customer: "PRC",              watchlist: "PRC",              match: true  },
+        { field: "Occupation",                  customer: "Executive",        watchlist: "Executive",        match: false },
+        { field: "Weak Link",                   customer: "N/A",              watchlist: "N/A",              match: true  },
+        { field: "C2C",                         customer: "CITIC Group",      watchlist: "CITIC Group Corp", match: true  },
+        { field: "Passport/Tax/Identification", customer: "N/A",              watchlist: "N/A",              match: true  },
+        { field: "Address",                     customer: "Shanghai, PRC",    watchlist: "Shanghai, PRC",    match: true  },
       ]},
     // 1 — extra middle name
     { label: "LI, Bin Rong",   sublabel: "UN",           risk: "critical", nodeType: "person" as const, matchScore: 88, matchedAttributeIndices: [8,9,10,14],
       matchFields: [
-        { field: "Surname",    customer: "LI",               watchlist: "LI",               match: true  },
-        { field: "Given name", customer: "Bin",              watchlist: "Bin Rong",         match: true  },
-        { field: "DOB",        customer: "12 Jul 1975",       watchlist: "12 Jul 1975",       match: true  },
-        { field: "Nationality",customer: "PRC",               watchlist: "PRC",               match: true  },
+        { field: "Name",                        customer: "Li Bin",           watchlist: "LI, Bin Rong",     match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1975",             watchlist: "1975",             match: true  },
+        { field: "Country of Birth",            customer: "China",            watchlist: "China",            match: true  },
+        { field: "Day of Birth (DOB)",          customer: "12 Jul",           watchlist: "12 Jul",           match: true  },
+        { field: "Deceased Status",             customer: "FALSE",            watchlist: "FALSE",            match: true  },
+        { field: "Primary Name",               customer: "LI, Bin",          watchlist: "LI, Bin Rong",     match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",              watchlist: "N/A",              match: true  },
+        { field: "Gender",                      customer: "Male",             watchlist: "Male",             match: true  },
+        { field: "Nationality",                 customer: "PRC",              watchlist: "PRC",              match: true  },
+        { field: "Occupation",                  customer: "Executive",        watchlist: "N/A",              match: false },
+        { field: "Weak Link",                   customer: "N/A",              watchlist: "N/A",              match: true  },
+        { field: "C2C",                         customer: "CITIC Group",      watchlist: "N/A",              match: false },
+        { field: "Passport/Tax/Identification", customer: "N/A",              watchlist: "N/A",              match: true  },
+        { field: "Address",                     customer: "Shanghai, PRC",    watchlist: "N/A",              match: false },
       ]},
     // 2 — Wade-Giles transliteration
     { label: "LEE, Bin",       sublabel: "OFAC SDN",    risk: "critical", nodeType: "person" as const, matchScore: 82, matchedAttributeIndices: [8,10,13],
       matchFields: [
-        { field: "Given name", customer: "Bin",              watchlist: "Bin",              match: true  },
-        { field: "Nationality",customer: "PRC",               watchlist: "PRC",               match: true  },
-        { field: "Surname",    customer: "LI",               watchlist: "LEE",              match: true  },
-        { field: "DOB",        customer: "12 Jul 1975",       watchlist: "15 Jul 1975",       match: false },
+        { field: "Name",                        customer: "Li Bin",           watchlist: "LEE, Bin",         match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1975",             watchlist: "1975",             match: true  },
+        { field: "Country of Birth",            customer: "China",            watchlist: "China",            match: true  },
+        { field: "Day of Birth (DOB)",          customer: "12 Jul",           watchlist: "15 Jul",           match: false },
+        { field: "Deceased Status",             customer: "FALSE",            watchlist: "FALSE",            match: true  },
+        { field: "Primary Name",               customer: "LI, Bin",          watchlist: "LEE, Bin",         match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",              watchlist: "N/A",              match: true  },
+        { field: "Gender",                      customer: "Male",             watchlist: "Male",             match: true  },
+        { field: "Nationality",                 customer: "PRC",              watchlist: "PRC",              match: true  },
+        { field: "Occupation",                  customer: "Executive",        watchlist: "N/A",              match: false },
+        { field: "Weak Link",                   customer: "N/A",              watchlist: "N/A",              match: true  },
+        { field: "C2C",                         customer: "CITIC Group",      watchlist: "N/A",              match: false },
+        { field: "Passport/Tax/Identification", customer: "N/A",              watchlist: "N/A",              match: true  },
+        { field: "Address",                     customer: "Shanghai, PRC",    watchlist: "N/A",              match: false },
       ]},
     // 3 — reversed Western order
     { label: "Bin Li",         sublabel: "EU Sanctions", risk: "high",     nodeType: "person" as const, matchScore: 74, matchedAttributeIndices: [8,10,15],
       matchFields: [
-        { field: "Surname",    customer: "LI",               watchlist: "LI",               match: true  },
-        { field: "Given name", customer: "Bin",              watchlist: "Bin",              match: true  },
-        { field: "Nationality",customer: "PRC",               watchlist: "PRC",               match: true  },
-        { field: "DOB",        customer: "12 Jul 1975",       watchlist: "20 Feb 1980",       match: false },
+        { field: "Name",                        customer: "Li Bin",           watchlist: "Bin Li",           match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1975",             watchlist: "1980",             match: false },
+        { field: "Country of Birth",            customer: "China",            watchlist: "China",            match: true  },
+        { field: "Day of Birth (DOB)",          customer: "12 Jul",           watchlist: "20 Feb",           match: false },
+        { field: "Deceased Status",             customer: "FALSE",            watchlist: "FALSE",            match: true  },
+        { field: "Primary Name",               customer: "LI, Bin",          watchlist: "LI, Bin",          match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",              watchlist: "N/A",              match: true  },
+        { field: "Gender",                      customer: "Male",             watchlist: "Male",             match: true  },
+        { field: "Nationality",                 customer: "PRC",              watchlist: "PRC",              match: true  },
+        { field: "Occupation",                  customer: "Executive",        watchlist: "N/A",              match: false },
+        { field: "Weak Link",                   customer: "N/A",              watchlist: "N/A",              match: true  },
+        { field: "C2C",                         customer: "CITIC Group",      watchlist: "N/A",              match: false },
+        { field: "Passport/Tax/Identification", customer: "N/A",              watchlist: "N/A",              match: true  },
+        { field: "Address",                     customer: "Shanghai, PRC",    watchlist: "N/A",              match: false },
       ]},
     // 4 — spelling variant
     { label: "LI, Binn",       sublabel: "OFAC SDN",    risk: "high",     nodeType: "person" as const, matchScore: 66, matchedAttributeIndices: [8,13],
       matchFields: [
-        { field: "Surname",    customer: "LI",               watchlist: "LI",               match: true  },
-        { field: "Given name", customer: "Bin",              watchlist: "Binn",             match: true  },
-        { field: "Nationality",customer: "PRC",               watchlist: "SGP",               match: false },
-        { field: "DOB",        customer: "12 Jul 1975",       watchlist: "3 Sep 1976",        match: false },
+        { field: "Name",                        customer: "Li Bin",           watchlist: "LI, Binn",         match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1975",             watchlist: "1976",             match: false },
+        { field: "Country of Birth",            customer: "China",            watchlist: "Singapore",        match: false },
+        { field: "Day of Birth (DOB)",          customer: "12 Jul",           watchlist: "3 Sep",            match: false },
+        { field: "Deceased Status",             customer: "FALSE",            watchlist: "FALSE",            match: true  },
+        { field: "Primary Name",               customer: "LI, Bin",          watchlist: "LI, Binn",         match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",              watchlist: "N/A",              match: true  },
+        { field: "Gender",                      customer: "Male",             watchlist: "N/A",              match: false },
+        { field: "Nationality",                 customer: "PRC",              watchlist: "SGP",              match: false },
+        { field: "Occupation",                  customer: "Executive",        watchlist: "N/A",              match: false },
+        { field: "Weak Link",                   customer: "N/A",              watchlist: "N/A",              match: true  },
+        { field: "C2C",                         customer: "CITIC Group",      watchlist: "N/A",              match: false },
+        { field: "Passport/Tax/Identification", customer: "N/A",              watchlist: "N/A",              match: true  },
+        { field: "Address",                     customer: "Shanghai, PRC",    watchlist: "N/A",              match: false },
       ]},
     // 5 — phonetic near-match
     { label: "LI, Pin",        sublabel: "Interpol",    risk: "medium",   nodeType: "person" as const, matchScore: 51, matchedAttributeIndices: [8,16],
       matchFields: [
-        { field: "Surname",    customer: "LI",               watchlist: "LI",               match: true  },
-        { field: "Given name", customer: "Bin",              watchlist: "Pin",              match: false },
-        { field: "Nationality",customer: "PRC",               watchlist: "HK",                match: false },
-        { field: "DOB",        customer: "12 Jul 1975",       watchlist: "14 Apr 1982",       match: false },
+        { field: "Name",                        customer: "Li Bin",           watchlist: "LI, Pin",          match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1975",             watchlist: "1982",             match: false },
+        { field: "Country of Birth",            customer: "China",            watchlist: "Hong Kong",        match: false },
+        { field: "Day of Birth (DOB)",          customer: "12 Jul",           watchlist: "14 Apr",           match: false },
+        { field: "Deceased Status",             customer: "FALSE",            watchlist: "FALSE",            match: true  },
+        { field: "Primary Name",               customer: "LI, Bin",          watchlist: "LI, Pin",          match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",              watchlist: "N/A",              match: true  },
+        { field: "Gender",                      customer: "Male",             watchlist: "N/A",              match: false },
+        { field: "Nationality",                 customer: "PRC",              watchlist: "HK",               match: false },
+        { field: "Occupation",                  customer: "Executive",        watchlist: "N/A",              match: false },
+        { field: "Weak Link",                   customer: "N/A",              watchlist: "N/A",              match: true  },
+        { field: "C2C",                         customer: "CITIC Group",      watchlist: "N/A",              match: false },
+        { field: "Passport/Tax/Identification", customer: "N/A",              watchlist: "N/A",              match: true  },
+        { field: "Address",                     customer: "Shanghai, PRC",    watchlist: "N/A",              match: false },
       ]},
     // 6 — romanisation variant
     { label: "LI, Ben",        sublabel: "UN",           risk: "medium",   nodeType: "person" as const, matchScore: 45, matchedAttributeIndices: [8,14],
       matchFields: [
-        { field: "Surname",    customer: "LI",               watchlist: "LI",               match: true  },
-        { field: "Given name", customer: "Bin",              watchlist: "Ben",              match: false },
-        { field: "Address",    customer: "Shanghai, PRC",     watchlist: "Guangzhou, PRC",   match: false },
-        { field: "DOB",        customer: "12 Jul 1975",       watchlist: "7 Nov 1969",        match: false },
+        { field: "Name",                        customer: "Li Bin",           watchlist: "LI, Ben",          match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1975",             watchlist: "1969",             match: false },
+        { field: "Country of Birth",            customer: "China",            watchlist: "China",            match: true  },
+        { field: "Day of Birth (DOB)",          customer: "12 Jul",           watchlist: "7 Nov",            match: false },
+        { field: "Deceased Status",             customer: "FALSE",            watchlist: "FALSE",            match: true  },
+        { field: "Primary Name",               customer: "LI, Bin",          watchlist: "LI, Ben",          match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",              watchlist: "N/A",              match: true  },
+        { field: "Gender",                      customer: "Male",             watchlist: "N/A",              match: false },
+        { field: "Nationality",                 customer: "PRC",              watchlist: "N/A",              match: false },
+        { field: "Occupation",                  customer: "Executive",        watchlist: "N/A",              match: false },
+        { field: "Weak Link",                   customer: "N/A",              watchlist: "N/A",              match: true  },
+        { field: "C2C",                         customer: "CITIC Group",      watchlist: "N/A",              match: false },
+        { field: "Passport/Tax/Identification", customer: "N/A",              watchlist: "N/A",              match: true  },
+        { field: "Address",                     customer: "Shanghai, PRC",    watchlist: "Guangzhou, PRC",   match: false },
       ]},
     // 7 — distant transliteration
     { label: "LE, Bin",        sublabel: "World Bank",  risk: "low",      nodeType: "person" as const, matchScore: 32, matchedAttributeIndices: [17],
       matchFields: [
-        { field: "Given name", customer: "Bin",              watchlist: "Bin",              match: true  },
-        { field: "Surname",    customer: "LI",               watchlist: "LE",              match: false },
-        { field: "Nationality",customer: "PRC",               watchlist: "Vietnam",          match: false },
-        { field: "DOB",        customer: "12 Jul 1975",       watchlist: "22 Mar 1971",       match: false },
+        { field: "Name",                        customer: "Li Bin",           watchlist: "LE, Bin",          match: false },
+        { field: "Year of Birth (YOB)",         customer: "1975",             watchlist: "1971",             match: false },
+        { field: "Country of Birth",            customer: "China",            watchlist: "Vietnam",          match: false },
+        { field: "Day of Birth (DOB)",          customer: "12 Jul",           watchlist: "22 Mar",           match: false },
+        { field: "Deceased Status",             customer: "FALSE",            watchlist: "FALSE",            match: true  },
+        { field: "Primary Name",               customer: "LI, Bin",          watchlist: "LE, Bin",          match: false },
+        { field: "Former or Alias Name",        customer: "N/A",              watchlist: "N/A",              match: true  },
+        { field: "Gender",                      customer: "Male",             watchlist: "N/A",              match: false },
+        { field: "Nationality",                 customer: "PRC",              watchlist: "Vietnam",          match: false },
+        { field: "Occupation",                  customer: "Executive",        watchlist: "N/A",              match: false },
+        { field: "Weak Link",                   customer: "N/A",              watchlist: "N/A",              match: true  },
+        { field: "C2C",                         customer: "CITIC Group",      watchlist: "N/A",              match: false },
+        { field: "Passport/Tax/Identification", customer: "N/A",              watchlist: "N/A",              match: true  },
+        { field: "Address",                     customer: "Shanghai, PRC",    watchlist: "N/A",              match: false },
       ]},
-    // attr indices 8–12: identifier fields
-    { label: "Full Name",    sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "name"    as const },
-    { label: "Date of Birth",sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "dob"     as const },
-    { label: "Nationality",  sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
-    { label: "Address",      sublabel: "Geo",      risk: "high" as const, nodeType: "attribute" as const, attrIcon: "address" as const },
-    { label: "Employer",     sublabel: "Linkage",  risk: "high" as const, nodeType: "attribute" as const, attrIcon: "bank"    as const },
-    // worldcheck source nodes — shared across persons (indices 13–17)
+    // attr indices 8–21: 14 identifier fields (one per matchField)
+    { label: "Name",                        sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "name"    as const },
+    { label: "Year of Birth (YOB)",         sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "dob"     as const },
+    { label: "Country of Birth",            sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Day of Birth (DOB)",          sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "dob"     as const },
+    { label: "Deceased Status",             sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Primary Name",               sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "name"    as const },
+    { label: "Former or Alias Name",        sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "name"    as const },
+    { label: "Gender",                      sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Nationality",                 sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Occupation",                  sublabel: "Profile",  risk: "high" as const, nodeType: "attribute" as const, attrIcon: "bank"    as const },
+    { label: "Weak Link",                   sublabel: "Linkage",  risk: "high" as const, nodeType: "attribute" as const, attrIcon: "bank"    as const },
+    { label: "C2C",                         sublabel: "Linkage",  risk: "high" as const, nodeType: "attribute" as const, attrIcon: "bank"    as const },
+    { label: "Passport/Tax/Identification", sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Address",                     sublabel: "Geo",      risk: "high" as const, nodeType: "attribute" as const, attrIcon: "address" as const },
+    // worldcheck source nodes — indices 22–26
     { label: "OFAC SDN List",        sublabel: "WorldCheck", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "source" as const },
     { label: "UN Consolidated List", sublabel: "WorldCheck", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "source" as const },
     { label: "EU Sanctions List",    sublabel: "WorldCheck", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "source" as const },
@@ -247,110 +333,222 @@ const CASE_NODES: Record<number, FraudNode[]> = {
     { label: "World Bank Debarment", sublabel: "WorldCheck", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "source" as const },
   ],
   // Rahman Mohammad Mizanur — UN Sanctions, High
-  // All watchlist persons — click a node to compare against customer profile
-  // connectedTo indices = other watchlist nodes connected via shared entity / surname / account
+  // Customer: Name "Rahman Mohammad Mizanur" · YOB 1972 · COB Bangladesh · DOB 14 Mar · Gender Male · Nationality Bangladesh · Occupation Bank Director · C2C Islami Bank BD · Address Dhaka, Bangladesh
   2: [
     // 0
     { label: "MIZANUR, Rashed",  sublabel: "UN Sanctions",      risk: "critical", nodeType: "person" as const, matchScore: 91, matchedAttributeIndices: [11,12,13,14,15,16,17],
       matchFields: [
-        { field: "Full name",     customer: "Rahman Mohammad Mizanur", watchlist: "MIZANUR, Rashed Rahman",  match: true  },
-        { field: "Date of birth", customer: "14 Mar 1972",             watchlist: "14 Mar 1972",             match: true  },
-        { field: "Nationality",   customer: "Bangladesh",              watchlist: "Bangladesh",              match: true  },
-        { field: "Country",       customer: "Bangladesh",              watchlist: "Bangladesh",              match: true  },
-        { field: "Gender",        customer: "Male",                    watchlist: "Male",                    match: true  },
-        { field: "Address",       customer: "Dhaka, Bangladesh",       watchlist: "Dhaka, BD",               match: true  },
-        { field: "Employer",      customer: "Islami Bank BD",          watchlist: "Islami Bank Bangladesh",  match: true  },
-        { field: "Occupation",    customer: "Bank Director",           watchlist: "Director",                match: true  },
-        { field: "Former name",   customer: "N/A",                     watchlist: "N/A",                     match: true  },
-        { field: "Alias",         customer: "N/A",                     watchlist: "M. Mizanur Rahman",       match: false },
+        { field: "Name",                        customer: "Rahman Mohammad Mizanur", watchlist: "MIZANUR, Rashed Rahman",  match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1972",                   watchlist: "1972",                   match: true  },
+        { field: "Country of Birth",            customer: "Bangladesh",             watchlist: "Bangladesh",             match: true  },
+        { field: "Day of Birth (DOB)",          customer: "14 Mar",                 watchlist: "14 Mar",                 match: true  },
+        { field: "Deceased Status",             customer: "FALSE",                  watchlist: "FALSE",                  match: true  },
+        { field: "Primary Name",               customer: "RAHMAN, Mohammad Mizanur",watchlist: "MIZANUR, Rashed Rahman", match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",                    watchlist: "M. Mizanur Rahman",      match: false },
+        { field: "Gender",                      customer: "Male",                   watchlist: "Male",                   match: true  },
+        { field: "Nationality",                 customer: "Bangladesh",             watchlist: "Bangladesh",             match: true  },
+        { field: "Occupation",                  customer: "Bank Director",          watchlist: "Director",               match: true  },
+        { field: "Weak Link",                   customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "C2C",                         customer: "Islami Bank BD",         watchlist: "Islami Bank Bangladesh", match: true  },
+        { field: "Passport/Tax/Identification", customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "Address",                     customer: "Dhaka, Bangladesh",      watchlist: "Dhaka, BD",              match: true  },
       ]},
     // 1 — shares Rahman + Mohammad
     { label: "RAHMAN, Mohd. M.", sublabel: "OFAC SDN",           risk: "critical", nodeType: "person" as const, matchScore: 87, matchedAttributeIndices: [11,15,17],
       matchFields: [
-        { field: "Surname",      customer: "Rahman",                  watchlist: "RAHMAN",                  match: true  },
-        { field: "Given name",   customer: "Mohammad",                watchlist: "Mohd.",                   match: true  },
-        { field: "DOB",          customer: "14 Mar 1972",             watchlist: "9 Aug 1969",              match: false },
-        { field: "Linked entity",customer: "Front Co. Ltd",           watchlist: "Front Co. Ltd",           match: true  },
+        { field: "Name",                        customer: "Rahman Mohammad Mizanur", watchlist: "RAHMAN, Mohd. M.",       match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1972",                   watchlist: "1969",                   match: false },
+        { field: "Country of Birth",            customer: "Bangladesh",             watchlist: "Bangladesh",             match: true  },
+        { field: "Day of Birth (DOB)",          customer: "14 Mar",                 watchlist: "9 Aug",                  match: false },
+        { field: "Deceased Status",             customer: "FALSE",                  watchlist: "FALSE",                  match: true  },
+        { field: "Primary Name",               customer: "RAHMAN, Mohammad Mizanur",watchlist: "RAHMAN, Mohd. M.",      match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "Gender",                      customer: "Male",                   watchlist: "Male",                   match: true  },
+        { field: "Nationality",                 customer: "Bangladesh",             watchlist: "Bangladesh",             match: true  },
+        { field: "Occupation",                  customer: "Bank Director",          watchlist: "N/A",                    match: false },
+        { field: "Weak Link",                   customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "C2C",                         customer: "Islami Bank BD",         watchlist: "Front Co. Ltd",          match: true  },
+        { field: "Passport/Tax/Identification", customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "Address",                     customer: "Dhaka, Bangladesh",      watchlist: "N/A",                    match: false },
       ]},
     // 2
     { label: "RAHMAN, Akhtar",  sublabel: "Interpol Red",       risk: "high",     nodeType: "person" as const, matchScore: 76, matchedAttributeIndices: [11,13,18],
       matchFields: [
-        { field: "Surname",      customer: "Rahman",                  watchlist: "RAHMAN",                  match: true  },
-        { field: "Nationality",  customer: "Bangladesh",              watchlist: "Bangladesh",               match: true  },
-        { field: "DOB",          customer: "14 Mar 1972",             watchlist: "22 Nov 1975",             match: false },
-        { field: "Address",      customer: "Dhaka, Bangladesh",       watchlist: "Chittagong, BD",          match: false },
+        { field: "Name",                        customer: "Rahman Mohammad Mizanur", watchlist: "RAHMAN, Akhtar",         match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1972",                   watchlist: "1975",                   match: false },
+        { field: "Country of Birth",            customer: "Bangladesh",             watchlist: "Bangladesh",             match: true  },
+        { field: "Day of Birth (DOB)",          customer: "14 Mar",                 watchlist: "22 Nov",                 match: false },
+        { field: "Deceased Status",             customer: "FALSE",                  watchlist: "FALSE",                  match: true  },
+        { field: "Primary Name",               customer: "RAHMAN, Mohammad Mizanur",watchlist: "RAHMAN, Akhtar",        match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "Gender",                      customer: "Male",                   watchlist: "Male",                   match: true  },
+        { field: "Nationality",                 customer: "Bangladesh",             watchlist: "Bangladesh",             match: true  },
+        { field: "Occupation",                  customer: "Bank Director",          watchlist: "N/A",                    match: false },
+        { field: "Weak Link",                   customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "C2C",                         customer: "Islami Bank BD",         watchlist: "N/A",                    match: false },
+        { field: "Passport/Tax/Identification", customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "Address",                     customer: "Dhaka, Bangladesh",      watchlist: "Chittagong, BD",         match: false },
       ]},
     // 3 — phonetic variant of Rahman
     { label: "RAHAMAN, Noor",   sublabel: "UN Sanctions",       risk: "high",     nodeType: "person" as const, matchScore: 68, matchedAttributeIndices: [11,13,16],
       matchFields: [
-        { field: "Surname",      customer: "Rahman",                  watchlist: "RAHAMAN",                 match: true  },
-        { field: "Nationality",  customer: "Bangladesh",              watchlist: "Bangladesh",               match: true  },
-        { field: "Employer",     customer: "Front Co. Ltd",           watchlist: "Dhaka Entity Ltd",        match: false },
-        { field: "Phone prefix", customer: "+880",                    watchlist: "+880",                    match: true  },
+        { field: "Name",                        customer: "Rahman Mohammad Mizanur", watchlist: "RAHAMAN, Noor",          match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1972",                   watchlist: "1974",                   match: false },
+        { field: "Country of Birth",            customer: "Bangladesh",             watchlist: "Bangladesh",             match: true  },
+        { field: "Day of Birth (DOB)",          customer: "14 Mar",                 watchlist: "N/A",                    match: false },
+        { field: "Deceased Status",             customer: "FALSE",                  watchlist: "FALSE",                  match: true  },
+        { field: "Primary Name",               customer: "RAHMAN, Mohammad Mizanur",watchlist: "RAHAMAN, Noor",         match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "Gender",                      customer: "Male",                   watchlist: "N/A",                    match: false },
+        { field: "Nationality",                 customer: "Bangladesh",             watchlist: "Bangladesh",             match: true  },
+        { field: "Occupation",                  customer: "Bank Director",          watchlist: "N/A",                    match: false },
+        { field: "Weak Link",                   customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "C2C",                         customer: "Islami Bank BD",         watchlist: "Dhaka Entity Ltd",       match: false },
+        { field: "Passport/Tax/Identification", customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "Address",                     customer: "Dhaka, Bangladesh",      watchlist: "N/A",                    match: false },
       ]},
     // 4 — shares Mizanur surname
     { label: "MIZANUR, Ibrahim",sublabel: "OFAC SDN",           risk: "high",     nodeType: "person" as const, matchScore: 64, matchedAttributeIndices: [11,13,15,17],
       matchFields: [
-        { field: "Surname",      customer: "Mizanur",                 watchlist: "MIZANUR",                 match: true  },
-        { field: "Nationality",  customer: "Bangladesh",              watchlist: "Bangladesh",               match: true  },
-        { field: "DOB",          customer: "14 Mar 1972",             watchlist: "3 Jan 1968",              match: false },
-        { field: "Linked acc.",  customer: "ACC ••4491",              watchlist: "ACC ••4491",              match: true  },
+        { field: "Name",                        customer: "Rahman Mohammad Mizanur", watchlist: "MIZANUR, Ibrahim",       match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1972",                   watchlist: "1968",                   match: false },
+        { field: "Country of Birth",            customer: "Bangladesh",             watchlist: "Bangladesh",             match: true  },
+        { field: "Day of Birth (DOB)",          customer: "14 Mar",                 watchlist: "3 Jan",                  match: false },
+        { field: "Deceased Status",             customer: "FALSE",                  watchlist: "FALSE",                  match: true  },
+        { field: "Primary Name",               customer: "RAHMAN, Mohammad Mizanur",watchlist: "MIZANUR, Ibrahim",      match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "Gender",                      customer: "Male",                   watchlist: "Male",                   match: true  },
+        { field: "Nationality",                 customer: "Bangladesh",             watchlist: "Bangladesh",             match: true  },
+        { field: "Occupation",                  customer: "Bank Director",          watchlist: "N/A",                    match: false },
+        { field: "Weak Link",                   customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "C2C",                         customer: "Islami Bank BD",         watchlist: "N/A",                    match: false },
+        { field: "Passport/Tax/Identification", customer: "N/A",                    watchlist: "ACC ••4491",             match: false },
+        { field: "Address",                     customer: "Dhaka, Bangladesh",      watchlist: "N/A",                    match: false },
       ]},
     // 5
     { label: "RAHMAN, Farida",  sublabel: "EU Sanctions",       risk: "high",     nodeType: "person" as const, matchScore: 61, matchedAttributeIndices: [11,13,14,19],
       matchFields: [
-        { field: "Surname",      customer: "Rahman",                  watchlist: "RAHMAN",                  match: true  },
-        { field: "Nationality",  customer: "Bangladesh",              watchlist: "Bangladesh",               match: true  },
-        { field: "DOB",          customer: "14 Mar 1972",             watchlist: "5 May 1977",              match: false },
-        { field: "Address",      customer: "Dhaka, Bangladesh",       watchlist: "Dhaka, BD",               match: true  },
+        { field: "Name",                        customer: "Rahman Mohammad Mizanur", watchlist: "RAHMAN, Farida",         match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1972",                   watchlist: "1977",                   match: false },
+        { field: "Country of Birth",            customer: "Bangladesh",             watchlist: "Bangladesh",             match: true  },
+        { field: "Day of Birth (DOB)",          customer: "14 Mar",                 watchlist: "5 May",                  match: false },
+        { field: "Deceased Status",             customer: "FALSE",                  watchlist: "FALSE",                  match: true  },
+        { field: "Primary Name",               customer: "RAHMAN, Mohammad Mizanur",watchlist: "RAHMAN, Farida",        match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "Gender",                      customer: "Male",                   watchlist: "Female",                 match: false },
+        { field: "Nationality",                 customer: "Bangladesh",             watchlist: "Bangladesh",             match: true  },
+        { field: "Occupation",                  customer: "Bank Director",          watchlist: "N/A",                    match: false },
+        { field: "Weak Link",                   customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "C2C",                         customer: "Islami Bank BD",         watchlist: "N/A",                    match: false },
+        { field: "Passport/Tax/Identification", customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "Address",                     customer: "Dhaka, Bangladesh",      watchlist: "Dhaka, BD",              match: true  },
       ]},
     // 6 — spelling variant of Rahman
     { label: "REHMAN, Alam M.", sublabel: "UN Sanctions",       risk: "medium",   nodeType: "person" as const, matchScore: 49, matchedAttributeIndices: [11,13,16],
       matchFields: [
-        { field: "Surname",      customer: "Rahman",                  watchlist: "REHMAN",                  match: true  },
-        { field: "Nationality",  customer: "Bangladesh",              watchlist: "Bangladesh",               match: true  },
-        { field: "DOB",          customer: "14 Mar 1972",             watchlist: "17 Oct 1971",             match: false },
-        { field: "Linked entity",customer: "Front Co. Ltd",           watchlist: "—",                       match: false },
+        { field: "Name",                        customer: "Rahman Mohammad Mizanur", watchlist: "REHMAN, Alam M.",        match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1972",                   watchlist: "1971",                   match: false },
+        { field: "Country of Birth",            customer: "Bangladesh",             watchlist: "Bangladesh",             match: true  },
+        { field: "Day of Birth (DOB)",          customer: "14 Mar",                 watchlist: "17 Oct",                 match: false },
+        { field: "Deceased Status",             customer: "FALSE",                  watchlist: "FALSE",                  match: true  },
+        { field: "Primary Name",               customer: "RAHMAN, Mohammad Mizanur",watchlist: "REHMAN, Alam M.",       match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "Gender",                      customer: "Male",                   watchlist: "N/A",                    match: false },
+        { field: "Nationality",                 customer: "Bangladesh",             watchlist: "Bangladesh",             match: true  },
+        { field: "Occupation",                  customer: "Bank Director",          watchlist: "N/A",                    match: false },
+        { field: "Weak Link",                   customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "C2C",                         customer: "Islami Bank BD",         watchlist: "—",                      match: false },
+        { field: "Passport/Tax/Identification", customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "Address",                     customer: "Dhaka, Bangladesh",      watchlist: "N/A",                    match: false },
       ]},
     // 7 — phonetic variant
     { label: "RAHAMAN, Tariq",  sublabel: "Interpol Red",       risk: "medium",   nodeType: "person" as const, matchScore: 44, matchedAttributeIndices: [11,18],
       matchFields: [
-        { field: "Surname",      customer: "Rahman",                  watchlist: "RAHAMAN",                 match: true  },
-        { field: "Nationality",  customer: "Bangladesh",              watchlist: "Pakistan",                 match: false },
-        { field: "DOB",          customer: "14 Mar 1972",             watchlist: "29 Jun 1970",             match: false },
-        { field: "Linked acc.",  customer: "ACC ••4491",              watchlist: "ACC ••7723",              match: false },
+        { field: "Name",                        customer: "Rahman Mohammad Mizanur", watchlist: "RAHAMAN, Tariq",         match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1972",                   watchlist: "1970",                   match: false },
+        { field: "Country of Birth",            customer: "Bangladesh",             watchlist: "Pakistan",               match: false },
+        { field: "Day of Birth (DOB)",          customer: "14 Mar",                 watchlist: "29 Jun",                 match: false },
+        { field: "Deceased Status",             customer: "FALSE",                  watchlist: "FALSE",                  match: true  },
+        { field: "Primary Name",               customer: "RAHMAN, Mohammad Mizanur",watchlist: "RAHAMAN, Tariq",        match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "Gender",                      customer: "Male",                   watchlist: "Male",                   match: true  },
+        { field: "Nationality",                 customer: "Bangladesh",             watchlist: "Pakistan",               match: false },
+        { field: "Occupation",                  customer: "Bank Director",          watchlist: "N/A",                    match: false },
+        { field: "Weak Link",                   customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "C2C",                         customer: "Islami Bank BD",         watchlist: "N/A",                    match: false },
+        { field: "Passport/Tax/Identification", customer: "N/A",                    watchlist: "ACC ••7723",             match: false },
+        { field: "Address",                     customer: "Dhaka, Bangladesh",      watchlist: "N/A",                    match: false },
       ]},
     // 8 — partial, shares Mizanur
     { label: "MIZANUR, Hossain",sublabel: "EU Sanctions",       risk: "medium",   nodeType: "person" as const, matchScore: 38, matchedAttributeIndices: [11,13,19],
       matchFields: [
-        { field: "Surname",      customer: "Mizanur",                 watchlist: "MIZANUR",                 match: true  },
-        { field: "Nationality",  customer: "Bangladesh",              watchlist: "Bangladesh",               match: true  },
-        { field: "DOB",          customer: "14 Mar 1972",             watchlist: "11 Feb 1980",             match: false },
-        { field: "Address",      customer: "Dhaka, Bangladesh",       watchlist: "Singapore",               match: false },
+        { field: "Name",                        customer: "Rahman Mohammad Mizanur", watchlist: "MIZANUR, Hossain",       match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1972",                   watchlist: "1980",                   match: false },
+        { field: "Country of Birth",            customer: "Bangladesh",             watchlist: "Bangladesh",             match: true  },
+        { field: "Day of Birth (DOB)",          customer: "14 Mar",                 watchlist: "11 Feb",                 match: false },
+        { field: "Deceased Status",             customer: "FALSE",                  watchlist: "FALSE",                  match: true  },
+        { field: "Primary Name",               customer: "RAHMAN, Mohammad Mizanur",watchlist: "MIZANUR, Hossain",      match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "Gender",                      customer: "Male",                   watchlist: "N/A",                    match: false },
+        { field: "Nationality",                 customer: "Bangladesh",             watchlist: "Bangladesh",             match: true  },
+        { field: "Occupation",                  customer: "Bank Director",          watchlist: "N/A",                    match: false },
+        { field: "Weak Link",                   customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "C2C",                         customer: "Islami Bank BD",         watchlist: "N/A",                    match: false },
+        { field: "Passport/Tax/Identification", customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "Address",                     customer: "Dhaka, Bangladesh",      watchlist: "Singapore",              match: false },
       ]},
     // 9 — loose, shares Rahman
     { label: "RAHMAN, Rahela",  sublabel: "World Bank",         risk: "low",      nodeType: "person" as const, matchScore: 28, matchedAttributeIndices: [11,13,20],
       matchFields: [
-        { field: "Surname",      customer: "Rahman",                  watchlist: "RAHMAN",                  match: true  },
-        { field: "Nationality",  customer: "Bangladesh",              watchlist: "Bangladesh",               match: true  },
-        { field: "DOB",          customer: "14 Mar 1972",             watchlist: "30 Sep 1985",             match: false },
-        { field: "Address",      customer: "Dhaka, Bangladesh",       watchlist: "Sylhet, BD",              match: false },
+        { field: "Name",                        customer: "Rahman Mohammad Mizanur", watchlist: "RAHMAN, Rahela",         match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1972",                   watchlist: "1985",                   match: false },
+        { field: "Country of Birth",            customer: "Bangladesh",             watchlist: "Bangladesh",             match: true  },
+        { field: "Day of Birth (DOB)",          customer: "14 Mar",                 watchlist: "30 Sep",                 match: false },
+        { field: "Deceased Status",             customer: "FALSE",                  watchlist: "FALSE",                  match: true  },
+        { field: "Primary Name",               customer: "RAHMAN, Mohammad Mizanur",watchlist: "RAHMAN, Rahela",        match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "Gender",                      customer: "Male",                   watchlist: "Female",                 match: false },
+        { field: "Nationality",                 customer: "Bangladesh",             watchlist: "Bangladesh",             match: true  },
+        { field: "Occupation",                  customer: "Bank Director",          watchlist: "N/A",                    match: false },
+        { field: "Weak Link",                   customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "C2C",                         customer: "Islami Bank BD",         watchlist: "N/A",                    match: false },
+        { field: "Passport/Tax/Identification", customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "Address",                     customer: "Dhaka, Bangladesh",      watchlist: "Sylhet, BD",             match: false },
       ]},
     // 10 — distant transliteration
     { label: "RAHAMAT, Shafiq", sublabel: "OFAC SDN",           risk: "low",      nodeType: "person" as const, matchScore: 21, matchedAttributeIndices: [13,17],
       matchFields: [
-        { field: "Surname",      customer: "Rahman",                  watchlist: "RAHAMAT",                 match: false },
-        { field: "Nationality",  customer: "Bangladesh",              watchlist: "Bangladesh",               match: true  },
-        { field: "DOB",          customer: "14 Mar 1972",             watchlist: "8 Mar 1983",              match: false },
-        { field: "Address",      customer: "Dhaka, Bangladesh",       watchlist: "Narayanganj, BD",         match: false },
+        { field: "Name",                        customer: "Rahman Mohammad Mizanur", watchlist: "RAHAMAT, Shafiq",        match: false },
+        { field: "Year of Birth (YOB)",         customer: "1972",                   watchlist: "1983",                   match: false },
+        { field: "Country of Birth",            customer: "Bangladesh",             watchlist: "Bangladesh",             match: true  },
+        { field: "Day of Birth (DOB)",          customer: "14 Mar",                 watchlist: "8 Mar",                  match: false },
+        { field: "Deceased Status",             customer: "FALSE",                  watchlist: "FALSE",                  match: true  },
+        { field: "Primary Name",               customer: "RAHMAN, Mohammad Mizanur",watchlist: "RAHAMAT, Shafiq",       match: false },
+        { field: "Former or Alias Name",        customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "Gender",                      customer: "Male",                   watchlist: "N/A",                    match: false },
+        { field: "Nationality",                 customer: "Bangladesh",             watchlist: "Bangladesh",             match: true  },
+        { field: "Occupation",                  customer: "Bank Director",          watchlist: "N/A",                    match: false },
+        { field: "Weak Link",                   customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "C2C",                         customer: "Islami Bank BD",         watchlist: "N/A",                    match: false },
+        { field: "Passport/Tax/Identification", customer: "N/A",                    watchlist: "N/A",                    match: true  },
+        { field: "Address",                     customer: "Dhaka, Bangladesh",      watchlist: "Narayanganj, BD",        match: false },
       ]},
-    // attr indices 11–15: identifier fields
-    { label: "Full Name",    sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "name"    as const },
-    { label: "Date of Birth",sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "dob"     as const },
-    { label: "Nationality",  sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
-    { label: "Address",      sublabel: "Geo",      risk: "high" as const, nodeType: "attribute" as const, attrIcon: "address" as const },
-    { label: "Employer",     sublabel: "Linkage",  risk: "high" as const, nodeType: "attribute" as const, attrIcon: "bank"    as const },
-    // worldcheck source nodes — shared across persons (indices 16–20)
+    // attr indices 11–24: 14 identifier fields
+    { label: "Name",                        sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "name"    as const },
+    { label: "Year of Birth (YOB)",         sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "dob"     as const },
+    { label: "Country of Birth",            sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Day of Birth (DOB)",          sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "dob"     as const },
+    { label: "Deceased Status",             sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Primary Name",               sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "name"    as const },
+    { label: "Former or Alias Name",        sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "name"    as const },
+    { label: "Gender",                      sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Nationality",                 sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Occupation",                  sublabel: "Profile",  risk: "high" as const, nodeType: "attribute" as const, attrIcon: "bank"    as const },
+    { label: "Weak Link",                   sublabel: "Linkage",  risk: "high" as const, nodeType: "attribute" as const, attrIcon: "bank"    as const },
+    { label: "C2C",                         sublabel: "Linkage",  risk: "high" as const, nodeType: "attribute" as const, attrIcon: "bank"    as const },
+    { label: "Passport/Tax/Identification", sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Address",                     sublabel: "Geo",      risk: "high" as const, nodeType: "attribute" as const, attrIcon: "address" as const },
+    // worldcheck source nodes — indices 25–29
     { label: "UN SC Consolidated List", sublabel: "WorldCheck", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "source" as const },
     { label: "OFAC SDN List",           sublabel: "WorldCheck", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "source" as const },
     { label: "Interpol Red Notices",    sublabel: "WorldCheck", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "source" as const },
@@ -358,65 +556,491 @@ const CASE_NODES: Record<number, FraudNode[]> = {
     { label: "World Bank Debarment",    sublabel: "WorldCheck", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "source" as const },
   ],
   // Nur Jazlan Mohamed — PEP Lists, High
+  // Customer: Name "Nur Jazlan Mohamed" · YOB 1966 · COB Malaysia · DOB 24 Jan · Gender Male · Nationality MALAYSIA · Occupation Insurance Agent · Weak Link Weak · C2C "Linked to Watchlist : Nur Jazlan Mohamed" · Passport "MAL IC : 7912435SL" · Address "10 Jalan Bukit Bintang"
   3: [
-    { label: "NUR JAZLAN, Mohamed",   sublabel: "PEP Lists",      risk: "high",   nodeType: "person" as const, matchScore: 79, matchedAttributeIndices: [14,15,16,17,18,19,20], matchFields: [
-        { field: "Name",          customer: "Nur Jazlan Mohamed",      watchlist: "NUR JAZLAN, Mohamed (N.Mohammed)",   match: true  },
-        { field: "Date of birth", customer: "15/02/1966",              watchlist: "15/02/1966",                         match: true  },
-        { field: "Country",       customer: "Selangor, MALAYSIA",      watchlist: "Selangor, MALAYSIA",                 match: true  },
-        { field: "Gender",        customer: "Male",                    watchlist: "M",                                  match: true  },
-        { field: "Nationality",   customer: "MALAYSIA",                watchlist: "MALAYSIA",                           match: true  },
-        { field: "Employer",      customer: "Dewan Rakyat",            watchlist: "Dewan Rakyat",                       match: true  },
-        { field: "Occupation",    customer: "Member of Dewan Rakyat",  watchlist: "Member of Dewan Rakyat",             match: true  },
-        { field: "Former name",   customer: "MOHAMED Nur Jazlan",      watchlist: "MOHAMED Nur Jazlan",                 match: true  },
-        { field: "Alias",         customer: "MOHAMED Nur Jazlan; MOHAMED Nur Jazlan bin; Datuk Nur Jazlan MOHAMED", watchlist: "MOHAMED Nur Jazlan; MOHAMED Nur Jazlan bin; Datuk Nur Jazlan MOHAMED", match: false },
-    ] },
-    { label: "NUR JAZLAN, Mohamad",   sublabel: "UN PEP",         risk: "high",   nodeType: "person" as const, matchScore: 74, matchedAttributeIndices: [14,16,20], matchFields: [{ field: "Surname", customer: "Nur Jazlan", watchlist: "NUR JAZLAN", match: true }, { field: "Given name", customer: "Mohamed", watchlist: "Mohamad", match: true }, { field: "Nationality", customer: "MYS", watchlist: "MYS", match: true }, { field: "DOB", customer: "4 Sep 1966", watchlist: "7 Sep 1966", match: false }] },
-    { label: "Jazlan Nur Mohamed",    sublabel: "EU PEP",         risk: "high",   nodeType: "person" as const, matchScore: 70, matchedAttributeIndices: [14,15,16,21], matchFields: [{ field: "Full name", customer: "Nur Jazlan Mohamed", watchlist: "Jazlan Nur Mohamed", match: true }, { field: "Nationality", customer: "MYS", watchlist: "MYS", match: true }, { field: "DOB", customer: "4 Sep 1966", watchlist: "4 Sep 1966", match: true }, { field: "Address", customer: "Kuala Lumpur", watchlist: "Putrajaya", match: false }] },
-    { label: "NOR JAZLAN, Mohamed",   sublabel: "PEP Lists",      risk: "high",   nodeType: "person" as const, matchScore: 65, matchedAttributeIndices: [14,15,16,19], matchFields: [{ field: "Surname", customer: "Nur Jazlan", watchlist: "NOR JAZLAN", match: true }, { field: "Nationality", customer: "MYS", watchlist: "MYS", match: true }, { field: "DOB", customer: "4 Sep 1966", watchlist: "4 Sep 1966", match: true }, { field: "Passport", customer: "A12345678", watchlist: "A12345688", match: false }] },
-    { label: "NUR, Jazlan M.",        sublabel: "Interpol",       risk: "high",   nodeType: "person" as const, matchScore: 60, matchedAttributeIndices: [15,16,22], matchFields: [{ field: "Surname", customer: "Nur Jazlan", watchlist: "NUR", match: false }, { field: "Given name", customer: "Mohamed", watchlist: "Jazlan M.", match: false }, { field: "Nationality", customer: "MYS", watchlist: "MYS", match: true }, { field: "DOB", customer: "4 Sep 1966", watchlist: "4 Sep 1966", match: true }] },
-    { label: "NOOR JAZLAN, Mohamed",  sublabel: "UN PEP",         risk: "medium", nodeType: "person" as const, matchScore: 54, matchedAttributeIndices: [14,16,20], matchFields: [{ field: "Surname", customer: "Nur Jazlan", watchlist: "NOOR JAZLAN", match: true }, { field: "Nationality", customer: "MYS", watchlist: "MYS", match: true }, { field: "DOB", customer: "4 Sep 1966", watchlist: "19 Mar 1970", match: false }, { field: "Passport", customer: "A12345678", watchlist: "A99812341", match: false }] },
-    { label: "NUR JAZLAN, Mohammed",  sublabel: "PEP Lists",      risk: "medium", nodeType: "person" as const, matchScore: 49, matchedAttributeIndices: [14,19], matchFields: [{ field: "Full name", customer: "Nur Jazlan Mohamed", watchlist: "NUR JAZLAN, Mohammed", match: true }, { field: "Nationality", customer: "MYS", watchlist: "PAK", match: false }, { field: "DOB", customer: "4 Sep 1966", watchlist: "12 Jun 1968", match: false }, { field: "Address", customer: "Kuala Lumpur", watchlist: "Karachi", match: false }] },
-    { label: "JAZLAN, Nur M.",        sublabel: "EU PEP",         risk: "medium", nodeType: "person" as const, matchScore: 43, matchedAttributeIndices: [15,21], matchFields: [{ field: "Surname", customer: "Nur Jazlan", watchlist: "JAZLAN", match: false }, { field: "Given name", customer: "Mohamed", watchlist: "Nur M.", match: false }, { field: "Nationality", customer: "MYS", watchlist: "SGP", match: false }, { field: "DOB", customer: "4 Sep 1966", watchlist: "4 Sep 1966", match: true }] },
-    { label: "NUR JAZLAN, Mohd",      sublabel: "World Bank",     risk: "medium", nodeType: "person" as const, matchScore: 38, matchedAttributeIndices: [14,23], matchFields: [{ field: "Surname", customer: "Nur Jazlan", watchlist: "NUR JAZLAN", match: true }, { field: "Given name", customer: "Mohamed", watchlist: "Mohd", match: true }, { field: "Nationality", customer: "MYS", watchlist: "BRN", match: false }, { field: "DOB", customer: "4 Sep 1966", watchlist: "1 Jan 1961", match: false }] },
-    { label: "NUR JAZLAN, Md",        sublabel: "Interpol",       risk: "medium", nodeType: "person" as const, matchScore: 34, matchedAttributeIndices: [14,22], matchFields: [{ field: "Surname", customer: "Nur Jazlan", watchlist: "NUR JAZLAN", match: true }, { field: "Given name", customer: "Mohamed", watchlist: "Md", match: true }, { field: "DOB", customer: "4 Sep 1966", watchlist: "21 Feb 1972", match: false }, { field: "Passport", customer: "A12345678", watchlist: "Unknown", match: false }] },
-    { label: "NUR JALAN, Mohamed",    sublabel: "PEP Lists",      risk: "medium", nodeType: "person" as const, matchScore: 29, matchedAttributeIndices: [16,17,19], matchFields: [{ field: "Surname", customer: "Nur Jazlan", watchlist: "NUR JALAN", match: false }, { field: "Nationality", customer: "MYS", watchlist: "MYS", match: true }, { field: "DOB", customer: "4 Sep 1966", watchlist: "30 Nov 1974", match: false }, { field: "Address", customer: "Kuala Lumpur", watchlist: "Kuala Lumpur", match: true }] },
-    { label: "NOR JAZLAN, Mohd",      sublabel: "UN PEP",         risk: "medium", nodeType: "person" as const, matchScore: 24, matchedAttributeIndices: [14,20], matchFields: [{ field: "Surname", customer: "Nur Jazlan", watchlist: "NOR JAZLAN", match: true }, { field: "Given name", customer: "Mohamed", watchlist: "Mohd", match: true }, { field: "DOB", customer: "4 Sep 1966", watchlist: "8 Aug 1978", match: false }, { field: "Nationality", customer: "MYS", watchlist: "IDN", match: false }] },
-    { label: "NURJAZLAN, Mohamed",    sublabel: "Interpol",       risk: "low",    nodeType: "person" as const, matchScore: 20, matchedAttributeIndices: [14,16,22], matchFields: [{ field: "Surname", customer: "Nur Jazlan", watchlist: "NURJAZLAN", match: true }, { field: "Nationality", customer: "MYS", watchlist: "MYS", match: true }, { field: "DOB", customer: "4 Sep 1966", watchlist: "17 Mar 1983", match: false }, { field: "Passport", customer: "A12345678", watchlist: "Unknown", match: false }] },
-    { label: "NUR JAZLAN, Muhamad",   sublabel: "World Bank",     risk: "low",    nodeType: "person" as const, matchScore: 16, matchedAttributeIndices: [14,23], matchFields: [{ field: "Surname", customer: "Nur Jazlan", watchlist: "NUR JAZLAN", match: true }, { field: "Given name", customer: "Mohamed", watchlist: "Muhamad", match: true }, { field: "DOB", customer: "4 Sep 1966", watchlist: "2 May 1987", match: false }, { field: "Nationality", customer: "MYS", watchlist: "THA", match: false }] },
-    // attr indices 14–18: identifier fields
-    { label: "Full Name",    sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "name"    as const },
-    { label: "Date of Birth",sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "dob"     as const },
-    { label: "Nationality",  sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
-    { label: "Address",      sublabel: "Geo",      risk: "high" as const, nodeType: "attribute" as const, attrIcon: "address" as const },
-    { label: "Employer",     sublabel: "Linkage",  risk: "high" as const, nodeType: "attribute" as const, attrIcon: "bank"    as const },
-    // worldcheck source nodes — shared across persons (indices 19–23)
-    { label: "PEP Database",         sublabel: "WorldCheck", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "source" as const },
+    { label: "NUR JAZLAN, Mohamed",   sublabel: "PEP Lists",      risk: "high",   nodeType: "person" as const, matchScore: 79, matchedAttributeIndices: [14,15,16,17,18,19,20],
+      matchFields: [
+        { field: "Name",                        customer: "Nur Jazlan Mohamed",                     watchlist: "NUR JAZLAN, Mohamed (N.Mohammed)",    match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1966",                                   watchlist: "1966",                               match: true  },
+        { field: "Country of Birth",            customer: "Malaysia",                               watchlist: "Malaysia",                           match: true  },
+        { field: "Day of Birth (DOB)",          customer: "24 Jan",                                 watchlist: "24 Jan",                             match: true  },
+        { field: "Deceased Status",             customer: "FALSE",                                  watchlist: "FALSE",                              match: true  },
+        { field: "Primary Name",               customer: "NUR JAZLAN, Mohamed",                    watchlist: "NUR JAZLAN, Mohamed",                match: true  },
+        { field: "Former or Alias Name",        customer: "MOHAMED Nur Jazlan; Datuk Nur Jazlan MOHAMED", watchlist: "MOHAMED Nur Jazlan; MOHAMED Nur Jazlan bin", match: true  },
+        { field: "Gender",                      customer: "Male",                                   watchlist: "M",                                  match: true  },
+        { field: "Nationality",                 customer: "MALAYSIA",                               watchlist: "MALAYSIA",                           match: true  },
+        { field: "Occupation",                  customer: "Insurance Agent",                        watchlist: "N/A",                                match: false },
+        { field: "Weak Link",                   customer: "Weak",                                   watchlist: "Weak",                               match: true  },
+        { field: "C2C",                         customer: "Linked to Watchlist : Nur Jazlan Mohamed", watchlist: "Linked to Watchlist : Nur Jazlan Mohamed", match: true  },
+        { field: "Passport/Tax/Identification", customer: "MAL IC : 7912435SL",                    watchlist: "N/A",                                match: false },
+        { field: "Address",                     customer: "10 Jalan Bukit Bintang",                 watchlist: "Selangor, MALAYSIA",                 match: false },
+      ] },
+    { label: "NUR JAZLAN, Mohamad",   sublabel: "UN PEP",         risk: "high",   nodeType: "person" as const, matchScore: 74, matchedAttributeIndices: [14,16,20],
+      matchFields: [
+        { field: "Name",                        customer: "Nur Jazlan Mohamed",                     watchlist: "NUR JAZLAN, Mohamad",                match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1966",                                   watchlist: "1966",                               match: true  },
+        { field: "Country of Birth",            customer: "Malaysia",                               watchlist: "Malaysia",                           match: true  },
+        { field: "Day of Birth (DOB)",          customer: "24 Jan",                                 watchlist: "7 Sep",                              match: false },
+        { field: "Deceased Status",             customer: "FALSE",                                  watchlist: "FALSE",                              match: true  },
+        { field: "Primary Name",               customer: "NUR JAZLAN, Mohamed",                    watchlist: "NUR JAZLAN, Mohamad",                match: true  },
+        { field: "Former or Alias Name",        customer: "MOHAMED Nur Jazlan; Datuk Nur Jazlan MOHAMED", watchlist: "N/A",                          match: false },
+        { field: "Gender",                      customer: "Male",                                   watchlist: "Male",                               match: true  },
+        { field: "Nationality",                 customer: "MALAYSIA",                               watchlist: "MALAYSIA",                           match: true  },
+        { field: "Occupation",                  customer: "Insurance Agent",                        watchlist: "N/A",                                match: false },
+        { field: "Weak Link",                   customer: "Weak",                                   watchlist: "Weak",                               match: true  },
+        { field: "C2C",                         customer: "Linked to Watchlist : Nur Jazlan Mohamed", watchlist: "N/A",                              match: false },
+        { field: "Passport/Tax/Identification", customer: "MAL IC : 7912435SL",                    watchlist: "N/A",                                match: false },
+        { field: "Address",                     customer: "10 Jalan Bukit Bintang",                 watchlist: "N/A",                                match: false },
+      ] },
+    { label: "Jazlan Nur Mohamed",    sublabel: "EU PEP",         risk: "high",   nodeType: "person" as const, matchScore: 70, matchedAttributeIndices: [14,15,16,21],
+      matchFields: [
+        { field: "Name",                        customer: "Nur Jazlan Mohamed",                     watchlist: "Jazlan Nur Mohamed",                 match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1966",                                   watchlist: "1966",                               match: true  },
+        { field: "Country of Birth",            customer: "Malaysia",                               watchlist: "Malaysia",                           match: true  },
+        { field: "Day of Birth (DOB)",          customer: "24 Jan",                                 watchlist: "24 Jan",                             match: true  },
+        { field: "Deceased Status",             customer: "FALSE",                                  watchlist: "FALSE",                              match: true  },
+        { field: "Primary Name",               customer: "NUR JAZLAN, Mohamed",                    watchlist: "Jazlan Nur Mohamed",                 match: true  },
+        { field: "Former or Alias Name",        customer: "MOHAMED Nur Jazlan; Datuk Nur Jazlan MOHAMED", watchlist: "N/A",                          match: false },
+        { field: "Gender",                      customer: "Male",                                   watchlist: "Male",                               match: true  },
+        { field: "Nationality",                 customer: "MALAYSIA",                               watchlist: "MALAYSIA",                           match: true  },
+        { field: "Occupation",                  customer: "Insurance Agent",                        watchlist: "N/A",                                match: false },
+        { field: "Weak Link",                   customer: "Weak",                                   watchlist: "N/A",                                match: false },
+        { field: "C2C",                         customer: "Linked to Watchlist : Nur Jazlan Mohamed", watchlist: "N/A",                              match: false },
+        { field: "Passport/Tax/Identification", customer: "MAL IC : 7912435SL",                    watchlist: "N/A",                                match: false },
+        { field: "Address",                     customer: "10 Jalan Bukit Bintang",                 watchlist: "Putrajaya",                          match: false },
+      ] },
+    { label: "NOR JAZLAN, Mohamed",   sublabel: "PEP Lists",      risk: "high",   nodeType: "person" as const, matchScore: 65, matchedAttributeIndices: [14,15,16,19],
+      matchFields: [
+        { field: "Name",                        customer: "Nur Jazlan Mohamed",                     watchlist: "NOR JAZLAN, Mohamed",                match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1966",                                   watchlist: "1966",                               match: true  },
+        { field: "Country of Birth",            customer: "Malaysia",                               watchlist: "Malaysia",                           match: true  },
+        { field: "Day of Birth (DOB)",          customer: "24 Jan",                                 watchlist: "24 Jan",                             match: true  },
+        { field: "Deceased Status",             customer: "FALSE",                                  watchlist: "FALSE",                              match: true  },
+        { field: "Primary Name",               customer: "NUR JAZLAN, Mohamed",                    watchlist: "NOR JAZLAN, Mohamed",                match: true  },
+        { field: "Former or Alias Name",        customer: "MOHAMED Nur Jazlan; Datuk Nur Jazlan MOHAMED", watchlist: "N/A",                          match: false },
+        { field: "Gender",                      customer: "Male",                                   watchlist: "Male",                               match: true  },
+        { field: "Nationality",                 customer: "MALAYSIA",                               watchlist: "MALAYSIA",                           match: true  },
+        { field: "Occupation",                  customer: "Insurance Agent",                        watchlist: "N/A",                                match: false },
+        { field: "Weak Link",                   customer: "Weak",                                   watchlist: "N/A",                                match: false },
+        { field: "C2C",                         customer: "Linked to Watchlist : Nur Jazlan Mohamed", watchlist: "N/A",                              match: false },
+        { field: "Passport/Tax/Identification", customer: "MAL IC : 7912435SL",                    watchlist: "A12345688",                          match: false },
+        { field: "Address",                     customer: "10 Jalan Bukit Bintang",                 watchlist: "N/A",                                match: false },
+      ] },
+    { label: "NUR, Jazlan M.",        sublabel: "Interpol",       risk: "high",   nodeType: "person" as const, matchScore: 60, matchedAttributeIndices: [15,16,22],
+      matchFields: [
+        { field: "Name",                        customer: "Nur Jazlan Mohamed",                     watchlist: "NUR, Jazlan M.",                     match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1966",                                   watchlist: "1966",                               match: true  },
+        { field: "Country of Birth",            customer: "Malaysia",                               watchlist: "Malaysia",                           match: true  },
+        { field: "Day of Birth (DOB)",          customer: "24 Jan",                                 watchlist: "24 Jan",                             match: true  },
+        { field: "Deceased Status",             customer: "FALSE",                                  watchlist: "FALSE",                              match: true  },
+        { field: "Primary Name",               customer: "NUR JAZLAN, Mohamed",                    watchlist: "NUR, Jazlan M.",                     match: true  },
+        { field: "Former or Alias Name",        customer: "MOHAMED Nur Jazlan; Datuk Nur Jazlan MOHAMED", watchlist: "N/A",                          match: false },
+        { field: "Gender",                      customer: "Male",                                   watchlist: "N/A",                                match: false },
+        { field: "Nationality",                 customer: "MALAYSIA",                               watchlist: "MALAYSIA",                           match: true  },
+        { field: "Occupation",                  customer: "Insurance Agent",                        watchlist: "N/A",                                match: false },
+        { field: "Weak Link",                   customer: "Weak",                                   watchlist: "N/A",                                match: false },
+        { field: "C2C",                         customer: "Linked to Watchlist : Nur Jazlan Mohamed", watchlist: "N/A",                              match: false },
+        { field: "Passport/Tax/Identification", customer: "MAL IC : 7912435SL",                    watchlist: "N/A",                                match: false },
+        { field: "Address",                     customer: "10 Jalan Bukit Bintang",                 watchlist: "N/A",                                match: false },
+      ] },
+    { label: "NOOR JAZLAN, Mohamed",  sublabel: "UN PEP",         risk: "medium", nodeType: "person" as const, matchScore: 54, matchedAttributeIndices: [14,16,20],
+      matchFields: [
+        { field: "Name",                        customer: "Nur Jazlan Mohamed",                     watchlist: "NOOR JAZLAN, Mohamed",               match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1966",                                   watchlist: "1970",                               match: false },
+        { field: "Country of Birth",            customer: "Malaysia",                               watchlist: "Malaysia",                           match: true  },
+        { field: "Day of Birth (DOB)",          customer: "24 Jan",                                 watchlist: "19 Mar",                             match: false },
+        { field: "Deceased Status",             customer: "FALSE",                                  watchlist: "FALSE",                              match: true  },
+        { field: "Primary Name",               customer: "NUR JAZLAN, Mohamed",                    watchlist: "NOOR JAZLAN, Mohamed",               match: true  },
+        { field: "Former or Alias Name",        customer: "MOHAMED Nur Jazlan; Datuk Nur Jazlan MOHAMED", watchlist: "N/A",                          match: false },
+        { field: "Gender",                      customer: "Male",                                   watchlist: "Male",                               match: true  },
+        { field: "Nationality",                 customer: "MALAYSIA",                               watchlist: "MALAYSIA",                           match: true  },
+        { field: "Occupation",                  customer: "Insurance Agent",                        watchlist: "N/A",                                match: false },
+        { field: "Weak Link",                   customer: "Weak",                                   watchlist: "N/A",                                match: false },
+        { field: "C2C",                         customer: "Linked to Watchlist : Nur Jazlan Mohamed", watchlist: "N/A",                              match: false },
+        { field: "Passport/Tax/Identification", customer: "MAL IC : 7912435SL",                    watchlist: "A99812341",                          match: false },
+        { field: "Address",                     customer: "10 Jalan Bukit Bintang",                 watchlist: "N/A",                                match: false },
+      ] },
+    { label: "NUR JAZLAN, Mohammed",  sublabel: "PEP Lists",      risk: "medium", nodeType: "person" as const, matchScore: 49, matchedAttributeIndices: [14,19],
+      matchFields: [
+        { field: "Name",                        customer: "Nur Jazlan Mohamed",                     watchlist: "NUR JAZLAN, Mohammed",               match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1966",                                   watchlist: "1968",                               match: false },
+        { field: "Country of Birth",            customer: "Malaysia",                               watchlist: "Pakistan",                           match: false },
+        { field: "Day of Birth (DOB)",          customer: "24 Jan",                                 watchlist: "12 Jun",                             match: false },
+        { field: "Deceased Status",             customer: "FALSE",                                  watchlist: "FALSE",                              match: true  },
+        { field: "Primary Name",               customer: "NUR JAZLAN, Mohamed",                    watchlist: "NUR JAZLAN, Mohammed",               match: true  },
+        { field: "Former or Alias Name",        customer: "MOHAMED Nur Jazlan; Datuk Nur Jazlan MOHAMED", watchlist: "N/A",                          match: false },
+        { field: "Gender",                      customer: "Male",                                   watchlist: "N/A",                                match: false },
+        { field: "Nationality",                 customer: "MALAYSIA",                               watchlist: "PAK",                                match: false },
+        { field: "Occupation",                  customer: "Insurance Agent",                        watchlist: "N/A",                                match: false },
+        { field: "Weak Link",                   customer: "Weak",                                   watchlist: "Weak",                               match: true  },
+        { field: "C2C",                         customer: "Linked to Watchlist : Nur Jazlan Mohamed", watchlist: "N/A",                              match: false },
+        { field: "Passport/Tax/Identification", customer: "MAL IC : 7912435SL",                    watchlist: "N/A",                                match: false },
+        { field: "Address",                     customer: "10 Jalan Bukit Bintang",                 watchlist: "Karachi",                            match: false },
+      ] },
+    { label: "JAZLAN, Nur M.",        sublabel: "EU PEP",         risk: "medium", nodeType: "person" as const, matchScore: 43, matchedAttributeIndices: [15,21],
+      matchFields: [
+        { field: "Name",                        customer: "Nur Jazlan Mohamed",                     watchlist: "JAZLAN, Nur M.",                     match: false },
+        { field: "Year of Birth (YOB)",         customer: "1966",                                   watchlist: "1966",                               match: true  },
+        { field: "Country of Birth",            customer: "Malaysia",                               watchlist: "Malaysia",                           match: true  },
+        { field: "Day of Birth (DOB)",          customer: "24 Jan",                                 watchlist: "24 Jan",                             match: true  },
+        { field: "Deceased Status",             customer: "FALSE",                                  watchlist: "FALSE",                              match: true  },
+        { field: "Primary Name",               customer: "NUR JAZLAN, Mohamed",                    watchlist: "JAZLAN, Nur M.",                     match: false },
+        { field: "Former or Alias Name",        customer: "MOHAMED Nur Jazlan; Datuk Nur Jazlan MOHAMED", watchlist: "N/A",                          match: false },
+        { field: "Gender",                      customer: "Male",                                   watchlist: "N/A",                                match: false },
+        { field: "Nationality",                 customer: "MALAYSIA",                               watchlist: "SGP",                                match: false },
+        { field: "Occupation",                  customer: "Insurance Agent",                        watchlist: "N/A",                                match: false },
+        { field: "Weak Link",                   customer: "Weak",                                   watchlist: "N/A",                                match: false },
+        { field: "C2C",                         customer: "Linked to Watchlist : Nur Jazlan Mohamed", watchlist: "N/A",                              match: false },
+        { field: "Passport/Tax/Identification", customer: "MAL IC : 7912435SL",                    watchlist: "N/A",                                match: false },
+        { field: "Address",                     customer: "10 Jalan Bukit Bintang",                 watchlist: "N/A",                                match: false },
+      ] },
+    { label: "NUR JAZLAN, Mohd",      sublabel: "World Bank",     risk: "medium", nodeType: "person" as const, matchScore: 38, matchedAttributeIndices: [14,23],
+      matchFields: [
+        { field: "Name",                        customer: "Nur Jazlan Mohamed",                     watchlist: "NUR JAZLAN, Mohd",                   match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1966",                                   watchlist: "1961",                               match: false },
+        { field: "Country of Birth",            customer: "Malaysia",                               watchlist: "Brunei",                             match: false },
+        { field: "Day of Birth (DOB)",          customer: "24 Jan",                                 watchlist: "1 Jan",                              match: false },
+        { field: "Deceased Status",             customer: "FALSE",                                  watchlist: "FALSE",                              match: true  },
+        { field: "Primary Name",               customer: "NUR JAZLAN, Mohamed",                    watchlist: "NUR JAZLAN, Mohd",                   match: true  },
+        { field: "Former or Alias Name",        customer: "MOHAMED Nur Jazlan; Datuk Nur Jazlan MOHAMED", watchlist: "N/A",                          match: false },
+        { field: "Gender",                      customer: "Male",                                   watchlist: "N/A",                                match: false },
+        { field: "Nationality",                 customer: "MALAYSIA",                               watchlist: "BRN",                                match: false },
+        { field: "Occupation",                  customer: "Insurance Agent",                        watchlist: "N/A",                                match: false },
+        { field: "Weak Link",                   customer: "Weak",                                   watchlist: "N/A",                                match: false },
+        { field: "C2C",                         customer: "Linked to Watchlist : Nur Jazlan Mohamed", watchlist: "N/A",                              match: false },
+        { field: "Passport/Tax/Identification", customer: "MAL IC : 7912435SL",                    watchlist: "N/A",                                match: false },
+        { field: "Address",                     customer: "10 Jalan Bukit Bintang",                 watchlist: "N/A",                                match: false },
+      ] },
+    { label: "NUR JAZLAN, Md",        sublabel: "Interpol",       risk: "medium", nodeType: "person" as const, matchScore: 34, matchedAttributeIndices: [14,22],
+      matchFields: [
+        { field: "Name",                        customer: "Nur Jazlan Mohamed",                     watchlist: "NUR JAZLAN, Md",                     match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1966",                                   watchlist: "1972",                               match: false },
+        { field: "Country of Birth",            customer: "Malaysia",                               watchlist: "Malaysia",                           match: true  },
+        { field: "Day of Birth (DOB)",          customer: "24 Jan",                                 watchlist: "21 Feb",                             match: false },
+        { field: "Deceased Status",             customer: "FALSE",                                  watchlist: "FALSE",                              match: true  },
+        { field: "Primary Name",               customer: "NUR JAZLAN, Mohamed",                    watchlist: "NUR JAZLAN, Md",                     match: true  },
+        { field: "Former or Alias Name",        customer: "MOHAMED Nur Jazlan; Datuk Nur Jazlan MOHAMED", watchlist: "N/A",                          match: false },
+        { field: "Gender",                      customer: "Male",                                   watchlist: "N/A",                                match: false },
+        { field: "Nationality",                 customer: "MALAYSIA",                               watchlist: "N/A",                                match: false },
+        { field: "Occupation",                  customer: "Insurance Agent",                        watchlist: "N/A",                                match: false },
+        { field: "Weak Link",                   customer: "Weak",                                   watchlist: "N/A",                                match: false },
+        { field: "C2C",                         customer: "Linked to Watchlist : Nur Jazlan Mohamed", watchlist: "N/A",                              match: false },
+        { field: "Passport/Tax/Identification", customer: "MAL IC : 7912435SL",                    watchlist: "Unknown",                            match: false },
+        { field: "Address",                     customer: "10 Jalan Bukit Bintang",                 watchlist: "N/A",                                match: false },
+      ] },
+    { label: "NUR JALAN, Mohamed",    sublabel: "PEP Lists",      risk: "medium", nodeType: "person" as const, matchScore: 29, matchedAttributeIndices: [16,17,19],
+      matchFields: [
+        { field: "Name",                        customer: "Nur Jazlan Mohamed",                     watchlist: "NUR JALAN, Mohamed",                 match: false },
+        { field: "Year of Birth (YOB)",         customer: "1966",                                   watchlist: "1974",                               match: false },
+        { field: "Country of Birth",            customer: "Malaysia",                               watchlist: "Malaysia",                           match: true  },
+        { field: "Day of Birth (DOB)",          customer: "24 Jan",                                 watchlist: "30 Nov",                             match: false },
+        { field: "Deceased Status",             customer: "FALSE",                                  watchlist: "FALSE",                              match: true  },
+        { field: "Primary Name",               customer: "NUR JAZLAN, Mohamed",                    watchlist: "NUR JALAN, Mohamed",                 match: false },
+        { field: "Former or Alias Name",        customer: "MOHAMED Nur Jazlan; Datuk Nur Jazlan MOHAMED", watchlist: "N/A",                          match: false },
+        { field: "Gender",                      customer: "Male",                                   watchlist: "N/A",                                match: false },
+        { field: "Nationality",                 customer: "MALAYSIA",                               watchlist: "MALAYSIA",                           match: true  },
+        { field: "Occupation",                  customer: "Insurance Agent",                        watchlist: "N/A",                                match: false },
+        { field: "Weak Link",                   customer: "Weak",                                   watchlist: "N/A",                                match: false },
+        { field: "C2C",                         customer: "Linked to Watchlist : Nur Jazlan Mohamed", watchlist: "N/A",                              match: false },
+        { field: "Passport/Tax/Identification", customer: "MAL IC : 7912435SL",                    watchlist: "N/A",                                match: false },
+        { field: "Address",                     customer: "10 Jalan Bukit Bintang",                 watchlist: "Kuala Lumpur",                       match: false },
+      ] },
+    { label: "NOR JAZLAN, Mohd",      sublabel: "UN PEP",         risk: "medium", nodeType: "person" as const, matchScore: 24, matchedAttributeIndices: [14,20],
+      matchFields: [
+        { field: "Name",                        customer: "Nur Jazlan Mohamed",                     watchlist: "NOR JAZLAN, Mohd",                   match: false },
+        { field: "Year of Birth (YOB)",         customer: "1966",                                   watchlist: "1978",                               match: false },
+        { field: "Country of Birth",            customer: "Malaysia",                               watchlist: "Malaysia",                           match: true  },
+        { field: "Day of Birth (DOB)",          customer: "24 Jan",                                 watchlist: "8 Aug",                              match: false },
+        { field: "Deceased Status",             customer: "FALSE",                                  watchlist: "FALSE",                              match: true  },
+        { field: "Primary Name",               customer: "NUR JAZLAN, Mohamed",                    watchlist: "NOR JAZLAN, Mohd",                   match: false },
+        { field: "Former or Alias Name",        customer: "MOHAMED Nur Jazlan; Datuk Nur Jazlan MOHAMED", watchlist: "N/A",                          match: false },
+        { field: "Gender",                      customer: "Male",                                   watchlist: "N/A",                                match: false },
+        { field: "Nationality",                 customer: "MALAYSIA",                               watchlist: "IDN",                                match: false },
+        { field: "Occupation",                  customer: "Insurance Agent",                        watchlist: "N/A",                                match: false },
+        { field: "Weak Link",                   customer: "Weak",                                   watchlist: "N/A",                                match: false },
+        { field: "C2C",                         customer: "Linked to Watchlist : Nur Jazlan Mohamed", watchlist: "N/A",                              match: false },
+        { field: "Passport/Tax/Identification", customer: "MAL IC : 7912435SL",                    watchlist: "N/A",                                match: false },
+        { field: "Address",                     customer: "10 Jalan Bukit Bintang",                 watchlist: "N/A",                                match: false },
+      ] },
+    { label: "NURJAZLAN, Mohamed",    sublabel: "Interpol",       risk: "low",    nodeType: "person" as const, matchScore: 20, matchedAttributeIndices: [14,16,22],
+      matchFields: [
+        { field: "Name",                        customer: "Nur Jazlan Mohamed",                     watchlist: "NURJAZLAN, Mohamed",                 match: false },
+        { field: "Year of Birth (YOB)",         customer: "1966",                                   watchlist: "1983",                               match: false },
+        { field: "Country of Birth",            customer: "Malaysia",                               watchlist: "Malaysia",                           match: true  },
+        { field: "Day of Birth (DOB)",          customer: "24 Jan",                                 watchlist: "17 Mar",                             match: false },
+        { field: "Deceased Status",             customer: "FALSE",                                  watchlist: "FALSE",                              match: true  },
+        { field: "Primary Name",               customer: "NUR JAZLAN, Mohamed",                    watchlist: "NURJAZLAN, Mohamed",                 match: false },
+        { field: "Former or Alias Name",        customer: "MOHAMED Nur Jazlan; Datuk Nur Jazlan MOHAMED", watchlist: "N/A",                          match: false },
+        { field: "Gender",                      customer: "Male",                                   watchlist: "N/A",                                match: false },
+        { field: "Nationality",                 customer: "MALAYSIA",                               watchlist: "MALAYSIA",                           match: true  },
+        { field: "Occupation",                  customer: "Insurance Agent",                        watchlist: "N/A",                                match: false },
+        { field: "Weak Link",                   customer: "Weak",                                   watchlist: "N/A",                                match: false },
+        { field: "C2C",                         customer: "Linked to Watchlist : Nur Jazlan Mohamed", watchlist: "N/A",                              match: false },
+        { field: "Passport/Tax/Identification", customer: "MAL IC : 7912435SL",                    watchlist: "Unknown",                            match: false },
+        { field: "Address",                     customer: "10 Jalan Bukit Bintang",                 watchlist: "N/A",                                match: false },
+      ] },
+    { label: "NUR JAZLAN, Muhamad",   sublabel: "World Bank",     risk: "low",    nodeType: "person" as const, matchScore: 16, matchedAttributeIndices: [14,23],
+      matchFields: [
+        { field: "Name",                        customer: "Nur Jazlan Mohamed",                     watchlist: "NUR JAZLAN, Muhamad",                match: false },
+        { field: "Year of Birth (YOB)",         customer: "1966",                                   watchlist: "1987",                               match: false },
+        { field: "Country of Birth",            customer: "Malaysia",                               watchlist: "Thailand",                           match: false },
+        { field: "Day of Birth (DOB)",          customer: "24 Jan",                                 watchlist: "2 May",                              match: false },
+        { field: "Deceased Status",             customer: "FALSE",                                  watchlist: "FALSE",                              match: true  },
+        { field: "Primary Name",               customer: "NUR JAZLAN, Mohamed",                    watchlist: "NUR JAZLAN, Muhamad",                match: false },
+        { field: "Former or Alias Name",        customer: "MOHAMED Nur Jazlan; Datuk Nur Jazlan MOHAMED", watchlist: "N/A",                          match: false },
+        { field: "Gender",                      customer: "Male",                                   watchlist: "N/A",                                match: false },
+        { field: "Nationality",                 customer: "MALAYSIA",                               watchlist: "THA",                                match: false },
+        { field: "Occupation",                  customer: "Insurance Agent",                        watchlist: "N/A",                                match: false },
+        { field: "Weak Link",                   customer: "Weak",                                   watchlist: "N/A",                                match: false },
+        { field: "C2C",                         customer: "Linked to Watchlist : Nur Jazlan Mohamed", watchlist: "N/A",                              match: false },
+        { field: "Passport/Tax/Identification", customer: "MAL IC : 7912435SL",                    watchlist: "N/A",                                match: false },
+        { field: "Address",                     customer: "10 Jalan Bukit Bintang",                 watchlist: "N/A",                                match: false },
+      ] },
+    // attr indices 14–27: 14 identifier fields
+    { label: "Name",                        sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "name"    as const },
+    { label: "Year of Birth (YOB)",         sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "dob"     as const },
+    { label: "Country of Birth",            sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Day of Birth (DOB)",          sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "dob"     as const },
+    { label: "Deceased Status",             sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Primary Name",               sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "name"    as const },
+    { label: "Former or Alias Name",        sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "name"    as const },
+    { label: "Gender",                      sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Nationality",                 sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Occupation",                  sublabel: "Profile",  risk: "high" as const, nodeType: "attribute" as const, attrIcon: "bank"    as const },
+    { label: "Weak Link",                   sublabel: "Linkage",  risk: "high" as const, nodeType: "attribute" as const, attrIcon: "bank"    as const },
+    { label: "C2C",                         sublabel: "Linkage",  risk: "high" as const, nodeType: "attribute" as const, attrIcon: "bank"    as const },
+    { label: "Passport/Tax/Identification", sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Address",                     sublabel: "Geo",      risk: "high" as const, nodeType: "attribute" as const, attrIcon: "address" as const },
+    // worldcheck source nodes — indices 28–32
+    { label: "PEP Lists",            sublabel: "WorldCheck", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "source" as const },
     { label: "UN PEP List",          sublabel: "WorldCheck", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "source" as const },
     { label: "EU PEP List",          sublabel: "WorldCheck", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "source" as const },
     { label: "Interpol Red Notices", sublabel: "WorldCheck", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "source" as const },
     { label: "World Bank Debarment", sublabel: "WorldCheck", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "source" as const },
   ],
   // Madzir Kalid — Interpol, Medium
+  // Customer: Name "Madzir Kalid" · YOB 1978 · COB Malaysia · DOB 17 Aug · Gender Male · Nationality MYS · Occupation N/A · Passport "B4412209" · Address Malaysia
   4: [
-    { label: "MADZIR, Kalid",     sublabel: "Interpol",    risk: "high",   nodeType: "person" as const, matchScore: 63, matchedAttributeIndices: [12,13,14,17,18], matchFields: [{ field: "Full name", customer: "MADZIR, Kalid", watchlist: "MADZIR, Kalid", match: true }, { field: "DOB", customer: "17 Aug 1978", watchlist: "17 Aug 1978", match: true }, { field: "Nationality", customer: "MYS", watchlist: "MYS", match: true }, { field: "Passport", customer: "B4412209", watchlist: "B4412209", match: true }] },
-    { label: "Kalid Madzir",      sublabel: "Interpol",    risk: "high",   nodeType: "person" as const, matchScore: 58, matchedAttributeIndices: [12,13,14,17], matchFields: [{ field: "Full name", customer: "Madzir Kalid", watchlist: "Kalid Madzir", match: true }, { field: "Nationality", customer: "MYS", watchlist: "MYS", match: true }, { field: "DOB", customer: "17 Aug 1978", watchlist: "17 Aug 1978", match: true }, { field: "Passport", customer: "B4412209", watchlist: "B4412229", match: false }] },
-    { label: "MADZIR, Khalid",    sublabel: "OFAC SDN",    risk: "high",   nodeType: "person" as const, matchScore: 54, matchedAttributeIndices: [12,13,18], matchFields: [{ field: "Surname", customer: "Madzir", watchlist: "MADZIR", match: true }, { field: "Given name", customer: "Kalid", watchlist: "Khalid", match: true }, { field: "DOB", customer: "17 Aug 1978", watchlist: "17 Aug 1978", match: true }, { field: "Nationality", customer: "MYS", watchlist: "IDN", match: false }] },
-    { label: "MADZIR, Khaled",    sublabel: "UN",          risk: "high",   nodeType: "person" as const, matchScore: 49, matchedAttributeIndices: [12,19], matchFields: [{ field: "Surname", customer: "Madzir", watchlist: "MADZIR", match: true }, { field: "Given name", customer: "Kalid", watchlist: "Khaled", match: true }, { field: "DOB", customer: "17 Aug 1978", watchlist: "3 Mar 1980", match: false }, { field: "Nationality", customer: "MYS", watchlist: "SGP", match: false }] },
-    { label: "MADIR, Kalid",      sublabel: "Interpol",    risk: "high",   nodeType: "person" as const, matchScore: 45, matchedAttributeIndices: [12,13,14,17], matchFields: [{ field: "Surname", customer: "Madzir", watchlist: "MADIR", match: false }, { field: "Given name", customer: "Kalid", watchlist: "Kalid", match: true }, { field: "Nationality", customer: "MYS", watchlist: "MYS", match: true }, { field: "DOB", customer: "17 Aug 1978", watchlist: "17 Aug 1978", match: true }] },
-    { label: "M. KHALID",         sublabel: "OFAC SDN",    risk: "medium", nodeType: "person" as const, matchScore: 40, matchedAttributeIndices: [12,14,18], matchFields: [{ field: "Surname", customer: "Madzir", watchlist: "M.", match: false }, { field: "Given name", customer: "Kalid", watchlist: "KHALID", match: true }, { field: "Nationality", customer: "MYS", watchlist: "MYS", match: true }, { field: "DOB", customer: "17 Aug 1978", watchlist: "22 Oct 1975", match: false }] },
-    { label: "MADZIR, Callid",    sublabel: "EU Sanctions",risk: "medium", nodeType: "person" as const, matchScore: 36, matchedAttributeIndices: [12,20], matchFields: [{ field: "Surname", customer: "Madzir", watchlist: "MADZIR", match: true }, { field: "Given name", customer: "Kalid", watchlist: "Callid", match: false }, { field: "DOB", customer: "17 Aug 1978", watchlist: "5 Jun 1982", match: false }, { field: "Nationality", customer: "MYS", watchlist: "AUS", match: false }] },
-    { label: "MAZDIR, Kalid",     sublabel: "Interpol",    risk: "medium", nodeType: "person" as const, matchScore: 32, matchedAttributeIndices: [12,14,17], matchFields: [{ field: "Surname", customer: "Madzir", watchlist: "MAZDIR", match: false }, { field: "Given name", customer: "Kalid", watchlist: "Kalid", match: true }, { field: "Nationality", customer: "MYS", watchlist: "MYS", match: true }, { field: "DOB", customer: "17 Aug 1978", watchlist: "9 Nov 1976", match: false }] },
-    { label: "MADZIR, Kalit",     sublabel: "UN",          risk: "medium", nodeType: "person" as const, matchScore: 28, matchedAttributeIndices: [12,19], matchFields: [{ field: "Surname", customer: "Madzir", watchlist: "MADZIR", match: true }, { field: "Given name", customer: "Kalid", watchlist: "Kalit", match: false }, { field: "DOB", customer: "17 Aug 1978", watchlist: "14 Apr 1984", match: false }, { field: "Nationality", customer: "MYS", watchlist: "SGP", match: false }] },
-    { label: "MADZEER, Kalid",    sublabel: "Interpol",    risk: "medium", nodeType: "person" as const, matchScore: 24, matchedAttributeIndices: [12,14,17], matchFields: [{ field: "Surname", customer: "Madzir", watchlist: "MADZEER", match: false }, { field: "Given name", customer: "Kalid", watchlist: "Kalid", match: true }, { field: "DOB", customer: "17 Aug 1978", watchlist: "30 Jan 1980", match: false }, { field: "Nationality", customer: "MYS", watchlist: "MYS", match: true }] },
-    { label: "MADZIR, K.",        sublabel: "World Bank",  risk: "low",    nodeType: "person" as const, matchScore: 18, matchedAttributeIndices: [12,21], matchFields: [{ field: "Surname", customer: "Madzir", watchlist: "MADZIR", match: true }, { field: "Given name", customer: "Kalid", watchlist: "K.", match: true }, { field: "DOB", customer: "17 Aug 1978", watchlist: "Unknown", match: false }, { field: "Nationality", customer: "MYS", watchlist: "IDN", match: false }] },
-    { label: "MADZIRI, Kalid",    sublabel: "Interpol",    risk: "low",    nodeType: "person" as const, matchScore: 14, matchedAttributeIndices: [12,14,17], matchFields: [{ field: "Surname", customer: "Madzir", watchlist: "MADZIRI", match: false }, { field: "Given name", customer: "Kalid", watchlist: "Kalid", match: true }, { field: "DOB", customer: "17 Aug 1978", watchlist: "2 Jul 1987", match: false }, { field: "Nationality", customer: "MYS", watchlist: "MYS", match: true }] },
-    // attr indices 12–16: identifier fields
-    { label: "Full Name",    sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "name"    as const },
-    { label: "Date of Birth",sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "dob"     as const },
-    { label: "Nationality",  sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
-    { label: "Address",      sublabel: "Geo",      risk: "high" as const, nodeType: "attribute" as const, attrIcon: "address" as const },
-    { label: "Employer",     sublabel: "Linkage",  risk: "high" as const, nodeType: "attribute" as const, attrIcon: "bank"    as const },
-    // worldcheck source nodes — shared across persons (indices 17–21)
+    { label: "MADZIR, Kalid",     sublabel: "Interpol",    risk: "high",   nodeType: "person" as const, matchScore: 63, matchedAttributeIndices: [12,13,14,17,18],
+      matchFields: [
+        { field: "Name",                        customer: "Madzir Kalid",  watchlist: "MADZIR, Kalid",  match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1978",          watchlist: "1978",            match: true  },
+        { field: "Country of Birth",            customer: "Malaysia",      watchlist: "Malaysia",        match: true  },
+        { field: "Day of Birth (DOB)",          customer: "17 Aug",        watchlist: "17 Aug",          match: true  },
+        { field: "Deceased Status",             customer: "FALSE",         watchlist: "FALSE",           match: true  },
+        { field: "Primary Name",               customer: "MADZIR, Kalid", watchlist: "MADZIR, Kalid",  match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Gender",                      customer: "Male",          watchlist: "N/A",             match: false },
+        { field: "Nationality",                 customer: "MYS",           watchlist: "MYS",             match: true  },
+        { field: "Occupation",                  customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Weak Link",                   customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "C2C",                         customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Passport/Tax/Identification", customer: "B4412209",      watchlist: "B4412209",        match: true  },
+        { field: "Address",                     customer: "Malaysia",      watchlist: "N/A",             match: false },
+      ] },
+    { label: "Kalid Madzir",      sublabel: "Interpol",    risk: "high",   nodeType: "person" as const, matchScore: 58, matchedAttributeIndices: [12,13,14,17],
+      matchFields: [
+        { field: "Name",                        customer: "Madzir Kalid",  watchlist: "Kalid Madzir",   match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1978",          watchlist: "1978",            match: true  },
+        { field: "Country of Birth",            customer: "Malaysia",      watchlist: "Malaysia",        match: true  },
+        { field: "Day of Birth (DOB)",          customer: "17 Aug",        watchlist: "17 Aug",          match: true  },
+        { field: "Deceased Status",             customer: "FALSE",         watchlist: "FALSE",           match: true  },
+        { field: "Primary Name",               customer: "MADZIR, Kalid", watchlist: "Kalid Madzir",   match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Gender",                      customer: "Male",          watchlist: "N/A",             match: false },
+        { field: "Nationality",                 customer: "MYS",           watchlist: "MYS",             match: true  },
+        { field: "Occupation",                  customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Weak Link",                   customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "C2C",                         customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Passport/Tax/Identification", customer: "B4412209",      watchlist: "B4412229",        match: false },
+        { field: "Address",                     customer: "Malaysia",      watchlist: "N/A",             match: false },
+      ] },
+    { label: "MADZIR, Khalid",    sublabel: "OFAC SDN",    risk: "high",   nodeType: "person" as const, matchScore: 54, matchedAttributeIndices: [12,13,18],
+      matchFields: [
+        { field: "Name",                        customer: "Madzir Kalid",  watchlist: "MADZIR, Khalid", match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1978",          watchlist: "1978",            match: true  },
+        { field: "Country of Birth",            customer: "Malaysia",      watchlist: "Indonesia",       match: false },
+        { field: "Day of Birth (DOB)",          customer: "17 Aug",        watchlist: "17 Aug",          match: true  },
+        { field: "Deceased Status",             customer: "FALSE",         watchlist: "FALSE",           match: true  },
+        { field: "Primary Name",               customer: "MADZIR, Kalid", watchlist: "MADZIR, Khalid", match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Gender",                      customer: "Male",          watchlist: "N/A",             match: false },
+        { field: "Nationality",                 customer: "MYS",           watchlist: "IDN",             match: false },
+        { field: "Occupation",                  customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Weak Link",                   customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "C2C",                         customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Passport/Tax/Identification", customer: "B4412209",      watchlist: "N/A",             match: false },
+        { field: "Address",                     customer: "Malaysia",      watchlist: "N/A",             match: false },
+      ] },
+    { label: "MADZIR, Khaled",    sublabel: "UN",          risk: "high",   nodeType: "person" as const, matchScore: 49, matchedAttributeIndices: [12,19],
+      matchFields: [
+        { field: "Name",                        customer: "Madzir Kalid",  watchlist: "MADZIR, Khaled", match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1978",          watchlist: "1980",            match: false },
+        { field: "Country of Birth",            customer: "Malaysia",      watchlist: "Singapore",       match: false },
+        { field: "Day of Birth (DOB)",          customer: "17 Aug",        watchlist: "3 Mar",           match: false },
+        { field: "Deceased Status",             customer: "FALSE",         watchlist: "FALSE",           match: true  },
+        { field: "Primary Name",               customer: "MADZIR, Kalid", watchlist: "MADZIR, Khaled", match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Gender",                      customer: "Male",          watchlist: "N/A",             match: false },
+        { field: "Nationality",                 customer: "MYS",           watchlist: "SGP",             match: false },
+        { field: "Occupation",                  customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Weak Link",                   customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "C2C",                         customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Passport/Tax/Identification", customer: "B4412209",      watchlist: "N/A",             match: false },
+        { field: "Address",                     customer: "Malaysia",      watchlist: "N/A",             match: false },
+      ] },
+    { label: "MADIR, Kalid",      sublabel: "Interpol",    risk: "high",   nodeType: "person" as const, matchScore: 45, matchedAttributeIndices: [12,13,14,17],
+      matchFields: [
+        { field: "Name",                        customer: "Madzir Kalid",  watchlist: "MADIR, Kalid",   match: false },
+        { field: "Year of Birth (YOB)",         customer: "1978",          watchlist: "1978",            match: true  },
+        { field: "Country of Birth",            customer: "Malaysia",      watchlist: "Malaysia",        match: true  },
+        { field: "Day of Birth (DOB)",          customer: "17 Aug",        watchlist: "17 Aug",          match: true  },
+        { field: "Deceased Status",             customer: "FALSE",         watchlist: "FALSE",           match: true  },
+        { field: "Primary Name",               customer: "MADZIR, Kalid", watchlist: "MADIR, Kalid",   match: false },
+        { field: "Former or Alias Name",        customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Gender",                      customer: "Male",          watchlist: "N/A",             match: false },
+        { field: "Nationality",                 customer: "MYS",           watchlist: "MYS",             match: true  },
+        { field: "Occupation",                  customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Weak Link",                   customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "C2C",                         customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Passport/Tax/Identification", customer: "B4412209",      watchlist: "N/A",             match: false },
+        { field: "Address",                     customer: "Malaysia",      watchlist: "N/A",             match: false },
+      ] },
+    { label: "M. KHALID",         sublabel: "OFAC SDN",    risk: "medium", nodeType: "person" as const, matchScore: 40, matchedAttributeIndices: [12,14,18],
+      matchFields: [
+        { field: "Name",                        customer: "Madzir Kalid",  watchlist: "M. KHALID",      match: false },
+        { field: "Year of Birth (YOB)",         customer: "1978",          watchlist: "1975",            match: false },
+        { field: "Country of Birth",            customer: "Malaysia",      watchlist: "Malaysia",        match: true  },
+        { field: "Day of Birth (DOB)",          customer: "17 Aug",        watchlist: "22 Oct",          match: false },
+        { field: "Deceased Status",             customer: "FALSE",         watchlist: "FALSE",           match: true  },
+        { field: "Primary Name",               customer: "MADZIR, Kalid", watchlist: "M. KHALID",      match: false },
+        { field: "Former or Alias Name",        customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Gender",                      customer: "Male",          watchlist: "N/A",             match: false },
+        { field: "Nationality",                 customer: "MYS",           watchlist: "MYS",             match: true  },
+        { field: "Occupation",                  customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Weak Link",                   customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "C2C",                         customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Passport/Tax/Identification", customer: "B4412209",      watchlist: "N/A",             match: false },
+        { field: "Address",                     customer: "Malaysia",      watchlist: "N/A",             match: false },
+      ] },
+    { label: "MADZIR, Callid",    sublabel: "EU Sanctions", risk: "medium", nodeType: "person" as const, matchScore: 36, matchedAttributeIndices: [12,20],
+      matchFields: [
+        { field: "Name",                        customer: "Madzir Kalid",  watchlist: "MADZIR, Callid", match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1978",          watchlist: "1982",            match: false },
+        { field: "Country of Birth",            customer: "Malaysia",      watchlist: "Australia",       match: false },
+        { field: "Day of Birth (DOB)",          customer: "17 Aug",        watchlist: "5 Jun",           match: false },
+        { field: "Deceased Status",             customer: "FALSE",         watchlist: "FALSE",           match: true  },
+        { field: "Primary Name",               customer: "MADZIR, Kalid", watchlist: "MADZIR, Callid", match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Gender",                      customer: "Male",          watchlist: "N/A",             match: false },
+        { field: "Nationality",                 customer: "MYS",           watchlist: "AUS",             match: false },
+        { field: "Occupation",                  customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Weak Link",                   customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "C2C",                         customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Passport/Tax/Identification", customer: "B4412209",      watchlist: "N/A",             match: false },
+        { field: "Address",                     customer: "Malaysia",      watchlist: "N/A",             match: false },
+      ] },
+    { label: "MAZDIR, Kalid",     sublabel: "Interpol",    risk: "medium", nodeType: "person" as const, matchScore: 32, matchedAttributeIndices: [12,14,17],
+      matchFields: [
+        { field: "Name",                        customer: "Madzir Kalid",  watchlist: "MAZDIR, Kalid",  match: false },
+        { field: "Year of Birth (YOB)",         customer: "1978",          watchlist: "1976",            match: false },
+        { field: "Country of Birth",            customer: "Malaysia",      watchlist: "Malaysia",        match: true  },
+        { field: "Day of Birth (DOB)",          customer: "17 Aug",        watchlist: "9 Nov",           match: false },
+        { field: "Deceased Status",             customer: "FALSE",         watchlist: "FALSE",           match: true  },
+        { field: "Primary Name",               customer: "MADZIR, Kalid", watchlist: "MAZDIR, Kalid",  match: false },
+        { field: "Former or Alias Name",        customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Gender",                      customer: "Male",          watchlist: "N/A",             match: false },
+        { field: "Nationality",                 customer: "MYS",           watchlist: "MYS",             match: true  },
+        { field: "Occupation",                  customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Weak Link",                   customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "C2C",                         customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Passport/Tax/Identification", customer: "B4412209",      watchlist: "N/A",             match: false },
+        { field: "Address",                     customer: "Malaysia",      watchlist: "N/A",             match: false },
+      ] },
+    { label: "MADZIR, Kalit",     sublabel: "UN",          risk: "medium", nodeType: "person" as const, matchScore: 28, matchedAttributeIndices: [12,19],
+      matchFields: [
+        { field: "Name",                        customer: "Madzir Kalid",  watchlist: "MADZIR, Kalit",  match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1978",          watchlist: "1984",            match: false },
+        { field: "Country of Birth",            customer: "Malaysia",      watchlist: "Singapore",       match: false },
+        { field: "Day of Birth (DOB)",          customer: "17 Aug",        watchlist: "14 Apr",          match: false },
+        { field: "Deceased Status",             customer: "FALSE",         watchlist: "FALSE",           match: true  },
+        { field: "Primary Name",               customer: "MADZIR, Kalid", watchlist: "MADZIR, Kalit",  match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Gender",                      customer: "Male",          watchlist: "N/A",             match: false },
+        { field: "Nationality",                 customer: "MYS",           watchlist: "SGP",             match: false },
+        { field: "Occupation",                  customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Weak Link",                   customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "C2C",                         customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Passport/Tax/Identification", customer: "B4412209",      watchlist: "N/A",             match: false },
+        { field: "Address",                     customer: "Malaysia",      watchlist: "N/A",             match: false },
+      ] },
+    { label: "MADZEER, Kalid",    sublabel: "Interpol",    risk: "medium", nodeType: "person" as const, matchScore: 24, matchedAttributeIndices: [12,14,17],
+      matchFields: [
+        { field: "Name",                        customer: "Madzir Kalid",  watchlist: "MADZEER, Kalid", match: false },
+        { field: "Year of Birth (YOB)",         customer: "1978",          watchlist: "1980",            match: false },
+        { field: "Country of Birth",            customer: "Malaysia",      watchlist: "Malaysia",        match: true  },
+        { field: "Day of Birth (DOB)",          customer: "17 Aug",        watchlist: "30 Jan",          match: false },
+        { field: "Deceased Status",             customer: "FALSE",         watchlist: "FALSE",           match: true  },
+        { field: "Primary Name",               customer: "MADZIR, Kalid", watchlist: "MADZEER, Kalid", match: false },
+        { field: "Former or Alias Name",        customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Gender",                      customer: "Male",          watchlist: "N/A",             match: false },
+        { field: "Nationality",                 customer: "MYS",           watchlist: "MYS",             match: true  },
+        { field: "Occupation",                  customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Weak Link",                   customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "C2C",                         customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Passport/Tax/Identification", customer: "B4412209",      watchlist: "N/A",             match: false },
+        { field: "Address",                     customer: "Malaysia",      watchlist: "N/A",             match: false },
+      ] },
+    { label: "MADZIR, K.",        sublabel: "World Bank",  risk: "low",    nodeType: "person" as const, matchScore: 18, matchedAttributeIndices: [12,21],
+      matchFields: [
+        { field: "Name",                        customer: "Madzir Kalid",  watchlist: "MADZIR, K.",     match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1978",          watchlist: "Unknown",         match: false },
+        { field: "Country of Birth",            customer: "Malaysia",      watchlist: "Indonesia",       match: false },
+        { field: "Day of Birth (DOB)",          customer: "17 Aug",        watchlist: "Unknown",         match: false },
+        { field: "Deceased Status",             customer: "FALSE",         watchlist: "FALSE",           match: true  },
+        { field: "Primary Name",               customer: "MADZIR, Kalid", watchlist: "MADZIR, K.",     match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Gender",                      customer: "Male",          watchlist: "N/A",             match: false },
+        { field: "Nationality",                 customer: "MYS",           watchlist: "IDN",             match: false },
+        { field: "Occupation",                  customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Weak Link",                   customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "C2C",                         customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Passport/Tax/Identification", customer: "B4412209",      watchlist: "N/A",             match: false },
+        { field: "Address",                     customer: "Malaysia",      watchlist: "N/A",             match: false },
+      ] },
+    { label: "MADZIRI, Kalid",    sublabel: "Interpol",    risk: "low",    nodeType: "person" as const, matchScore: 14, matchedAttributeIndices: [12,14,17],
+      matchFields: [
+        { field: "Name",                        customer: "Madzir Kalid",  watchlist: "MADZIRI, Kalid", match: false },
+        { field: "Year of Birth (YOB)",         customer: "1978",          watchlist: "1987",            match: false },
+        { field: "Country of Birth",            customer: "Malaysia",      watchlist: "Malaysia",        match: true  },
+        { field: "Day of Birth (DOB)",          customer: "17 Aug",        watchlist: "2 Jul",           match: false },
+        { field: "Deceased Status",             customer: "FALSE",         watchlist: "FALSE",           match: true  },
+        { field: "Primary Name",               customer: "MADZIR, Kalid", watchlist: "MADZIRI, Kalid", match: false },
+        { field: "Former or Alias Name",        customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Gender",                      customer: "Male",          watchlist: "N/A",             match: false },
+        { field: "Nationality",                 customer: "MYS",           watchlist: "MYS",             match: true  },
+        { field: "Occupation",                  customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Weak Link",                   customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "C2C",                         customer: "N/A",           watchlist: "N/A",             match: true  },
+        { field: "Passport/Tax/Identification", customer: "B4412209",      watchlist: "N/A",             match: false },
+        { field: "Address",                     customer: "Malaysia",      watchlist: "N/A",             match: false },
+      ] },
+    // attr indices 12–25: 14 identifier fields
+    { label: "Name",                        sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "name"    as const },
+    { label: "Year of Birth (YOB)",         sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "dob"     as const },
+    { label: "Country of Birth",            sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Day of Birth (DOB)",          sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "dob"     as const },
+    { label: "Deceased Status",             sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Primary Name",               sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "name"    as const },
+    { label: "Former or Alias Name",        sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "name"    as const },
+    { label: "Gender",                      sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Nationality",                 sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Occupation",                  sublabel: "Profile",  risk: "high" as const, nodeType: "attribute" as const, attrIcon: "bank"    as const },
+    { label: "Weak Link",                   sublabel: "Linkage",  risk: "high" as const, nodeType: "attribute" as const, attrIcon: "bank"    as const },
+    { label: "C2C",                         sublabel: "Linkage",  risk: "high" as const, nodeType: "attribute" as const, attrIcon: "bank"    as const },
+    { label: "Passport/Tax/Identification", sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Address",                     sublabel: "Geo",      risk: "high" as const, nodeType: "attribute" as const, attrIcon: "address" as const },
+    // worldcheck source nodes — indices 26–30
     { label: "Interpol Red Notices", sublabel: "WorldCheck", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "source" as const },
     { label: "OFAC SDN List",        sublabel: "WorldCheck", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "source" as const },
     { label: "UN Consolidated List", sublabel: "WorldCheck", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "source" as const },
@@ -424,27 +1048,245 @@ const CASE_NODES: Record<number, FraudNode[]> = {
     { label: "World Bank Debarment", sublabel: "WorldCheck", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "source" as const },
   ],
   // Benjamin Bernard — Adverse Media, Medium
+  // Customer: Name "Benjamin Bernard" · YOB 1983 · COB France · DOB 3 Jun · Gender Male · Nationality FRA · Passport "10FX39201" · Address "Paris, France"
   5: [
-    { label: "BERNARD, Benjamin", sublabel: "Adverse Media",risk: "high",   nodeType: "person" as const, matchScore: 57, matchedAttributeIndices: [13,14,15,16,18], matchFields: [{ field: "Full name", customer: "BERNARD, Benjamin", watchlist: "BERNARD, Benjamin", match: true }, { field: "DOB", customer: "3 Jun 1983", watchlist: "3 Jun 1983", match: true }, { field: "Nationality", customer: "FRA", watchlist: "FRA", match: true }, { field: "Address", customer: "Paris, France", watchlist: "Paris, France", match: true }] },
-    { label: "Benjamin BERNARD",  sublabel: "OFAC SDN",    risk: "high",   nodeType: "person" as const, matchScore: 53, matchedAttributeIndices: [13,14,15,19], matchFields: [{ field: "Full name", customer: "Benjamin Bernard", watchlist: "Benjamin BERNARD", match: true }, { field: "Nationality", customer: "FRA", watchlist: "FRA", match: true }, { field: "DOB", customer: "3 Jun 1983", watchlist: "3 Jun 1983", match: true }, { field: "Passport", customer: "10FX39201", watchlist: "10FX39201", match: true }] },
-    { label: "BERNARD, Ben",      sublabel: "Interpol",    risk: "high",   nodeType: "person" as const, matchScore: 48, matchedAttributeIndices: [13,15,20], matchFields: [{ field: "Surname", customer: "Bernard", watchlist: "BERNARD", match: true }, { field: "Given name", customer: "Benjamin", watchlist: "Ben", match: true }, { field: "Nationality", customer: "FRA", watchlist: "FRA", match: true }, { field: "DOB", customer: "3 Jun 1983", watchlist: "9 Jun 1983", match: false }] },
-    { label: "BERNHARD, Benjamin",sublabel: "EU Sanctions",risk: "high",   nodeType: "person" as const, matchScore: 44, matchedAttributeIndices: [13,14,21], matchFields: [{ field: "Surname", customer: "Bernard", watchlist: "BERNHARD", match: false }, { field: "Given name", customer: "Benjamin", watchlist: "Benjamin", match: true }, { field: "Nationality", customer: "FRA", watchlist: "DEU", match: false }, { field: "DOB", customer: "3 Jun 1983", watchlist: "3 Jun 1983", match: true }] },
-    { label: "BERNARD, Benjamen", sublabel: "Adverse Media",risk: "high",  nodeType: "person" as const, matchScore: 40, matchedAttributeIndices: [13,18], matchFields: [{ field: "Surname", customer: "Bernard", watchlist: "BERNARD", match: true }, { field: "Given name", customer: "Benjamin", watchlist: "Benjamen", match: false }, { field: "Nationality", customer: "FRA", watchlist: "BEL", match: false }, { field: "DOB", customer: "3 Jun 1983", watchlist: "14 Feb 1981", match: false }] },
-    { label: "BENARD, Benjamin",  sublabel: "Interpol",    risk: "medium", nodeType: "person" as const, matchScore: 36, matchedAttributeIndices: [13,14,20], matchFields: [{ field: "Surname", customer: "Bernard", watchlist: "BENARD", match: false }, { field: "Given name", customer: "Benjamin", watchlist: "Benjamin", match: true }, { field: "DOB", customer: "3 Jun 1983", watchlist: "3 Jun 1983", match: true }, { field: "Nationality", customer: "FRA", watchlist: "CHE", match: false }] },
-    { label: "BERNARD, Benjmin",  sublabel: "OFAC SDN",    risk: "medium", nodeType: "person" as const, matchScore: 32, matchedAttributeIndices: [13,15,19], matchFields: [{ field: "Surname", customer: "Bernard", watchlist: "BERNARD", match: true }, { field: "Given name", customer: "Benjamin", watchlist: "Benjmin", match: false }, { field: "Nationality", customer: "FRA", watchlist: "FRA", match: true }, { field: "DOB", customer: "3 Jun 1983", watchlist: "11 Sep 1985", match: false }] },
-    { label: "BERNERD, Benjamin", sublabel: "EU Sanctions",risk: "medium", nodeType: "person" as const, matchScore: 28, matchedAttributeIndices: [13,21], matchFields: [{ field: "Surname", customer: "Bernard", watchlist: "BERNERD", match: false }, { field: "Given name", customer: "Benjamin", watchlist: "Benjamin", match: true }, { field: "DOB", customer: "3 Jun 1983", watchlist: "27 Jul 1980", match: false }, { field: "Nationality", customer: "FRA", watchlist: "NLD", match: false }] },
-    { label: "BEN, Bernard",      sublabel: "Adverse Media",risk: "medium",nodeType: "person" as const, matchScore: 24, matchedAttributeIndices: [13,15,18], matchFields: [{ field: "Surname", customer: "Bernard", watchlist: "Bernard", match: true }, { field: "Given name", customer: "Benjamin", watchlist: "Ben", match: true }, { field: "Nationality", customer: "FRA", watchlist: "FRA", match: true }, { field: "DOB", customer: "3 Jun 1983", watchlist: "20 Mar 1979", match: false }] },
-    { label: "BERNARD, Benji",    sublabel: "Interpol",    risk: "medium", nodeType: "person" as const, matchScore: 20, matchedAttributeIndices: [13,15,20], matchFields: [{ field: "Surname", customer: "Bernard", watchlist: "BERNARD", match: true }, { field: "Given name", customer: "Benjamin", watchlist: "Benji", match: true }, { field: "DOB", customer: "3 Jun 1983", watchlist: "1 Dec 1982", match: false }, { field: "Nationality", customer: "FRA", watchlist: "FRA", match: true }] },
-    { label: "B. BERNARD",        sublabel: "World Bank",  risk: "low",    nodeType: "person" as const, matchScore: 16, matchedAttributeIndices: [13,22], matchFields: [{ field: "Surname", customer: "Bernard", watchlist: "BERNARD", match: true }, { field: "Given name", customer: "Benjamin", watchlist: "B.", match: true }, { field: "Nationality", customer: "FRA", watchlist: "Unknown", match: false }, { field: "DOB", customer: "3 Jun 1983", watchlist: "Unknown", match: false }] },
-    { label: "BERNARD, Beniamin", sublabel: "EU Sanctions",risk: "low",    nodeType: "person" as const, matchScore: 12, matchedAttributeIndices: [13,21], matchFields: [{ field: "Surname", customer: "Bernard", watchlist: "BERNARD", match: true }, { field: "Given name", customer: "Benjamin", watchlist: "Beniamin", match: false }, { field: "Nationality", customer: "FRA", watchlist: "POL", match: false }, { field: "DOB", customer: "3 Jun 1983", watchlist: "8 Oct 1990", match: false }] },
-    { label: "BERNHARD, Ben",     sublabel: "Interpol",    risk: "low",    nodeType: "person" as const, matchScore: 10, matchedAttributeIndices: [13,20], matchFields: [{ field: "Surname", customer: "Bernard", watchlist: "BERNHARD", match: false }, { field: "Given name", customer: "Benjamin", watchlist: "Ben", match: true }, { field: "DOB", customer: "3 Jun 1983", watchlist: "15 Feb 1988", match: false }, { field: "Nationality", customer: "FRA", watchlist: "DEU", match: false }] },
-    // attr indices 13–17: identifier fields
-    { label: "Full Name",    sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "name"    as const },
-    { label: "Date of Birth",sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "dob"     as const },
-    { label: "Nationality",  sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
-    { label: "Address",      sublabel: "Geo",      risk: "high" as const, nodeType: "attribute" as const, attrIcon: "address" as const },
-    { label: "Employer",     sublabel: "Linkage",  risk: "high" as const, nodeType: "attribute" as const, attrIcon: "bank"    as const },
-    // worldcheck source nodes — shared across persons (indices 18–22)
+    { label: "BERNARD, Benjamin", sublabel: "Adverse Media", risk: "high",   nodeType: "person" as const, matchScore: 57, matchedAttributeIndices: [13,14,15,16,18],
+      matchFields: [
+        { field: "Name",                        customer: "Benjamin Bernard", watchlist: "BERNARD, Benjamin", match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1983",            watchlist: "1983",               match: true  },
+        { field: "Country of Birth",            customer: "France",          watchlist: "France",             match: true  },
+        { field: "Day of Birth (DOB)",          customer: "3 Jun",           watchlist: "3 Jun",              match: true  },
+        { field: "Deceased Status",             customer: "FALSE",           watchlist: "FALSE",              match: true  },
+        { field: "Primary Name",               customer: "BERNARD, Benjamin",watchlist: "BERNARD, Benjamin", match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Gender",                      customer: "Male",            watchlist: "N/A",                match: false },
+        { field: "Nationality",                 customer: "FRA",             watchlist: "FRA",                match: true  },
+        { field: "Occupation",                  customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Weak Link",                   customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "C2C",                         customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Passport/Tax/Identification", customer: "10FX39201",       watchlist: "N/A",                match: false },
+        { field: "Address",                     customer: "Paris, France",   watchlist: "Paris, France",      match: true  },
+      ] },
+    { label: "Benjamin BERNARD",  sublabel: "OFAC SDN",     risk: "high",   nodeType: "person" as const, matchScore: 53, matchedAttributeIndices: [13,14,15,19],
+      matchFields: [
+        { field: "Name",                        customer: "Benjamin Bernard", watchlist: "Benjamin BERNARD",  match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1983",            watchlist: "1983",               match: true  },
+        { field: "Country of Birth",            customer: "France",          watchlist: "France",             match: true  },
+        { field: "Day of Birth (DOB)",          customer: "3 Jun",           watchlist: "3 Jun",              match: true  },
+        { field: "Deceased Status",             customer: "FALSE",           watchlist: "FALSE",              match: true  },
+        { field: "Primary Name",               customer: "BERNARD, Benjamin",watchlist: "Benjamin BERNARD",  match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Gender",                      customer: "Male",            watchlist: "N/A",                match: false },
+        { field: "Nationality",                 customer: "FRA",             watchlist: "FRA",                match: true  },
+        { field: "Occupation",                  customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Weak Link",                   customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "C2C",                         customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Passport/Tax/Identification", customer: "10FX39201",       watchlist: "10FX39201",          match: true  },
+        { field: "Address",                     customer: "Paris, France",   watchlist: "N/A",                match: false },
+      ] },
+    { label: "BERNARD, Ben",      sublabel: "Interpol",     risk: "high",   nodeType: "person" as const, matchScore: 48, matchedAttributeIndices: [13,15,20],
+      matchFields: [
+        { field: "Name",                        customer: "Benjamin Bernard", watchlist: "BERNARD, Ben",      match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1983",            watchlist: "1983",               match: true  },
+        { field: "Country of Birth",            customer: "France",          watchlist: "France",             match: true  },
+        { field: "Day of Birth (DOB)",          customer: "3 Jun",           watchlist: "9 Jun",              match: false },
+        { field: "Deceased Status",             customer: "FALSE",           watchlist: "FALSE",              match: true  },
+        { field: "Primary Name",               customer: "BERNARD, Benjamin",watchlist: "BERNARD, Ben",      match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Gender",                      customer: "Male",            watchlist: "N/A",                match: false },
+        { field: "Nationality",                 customer: "FRA",             watchlist: "FRA",                match: true  },
+        { field: "Occupation",                  customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Weak Link",                   customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "C2C",                         customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Passport/Tax/Identification", customer: "10FX39201",       watchlist: "N/A",                match: false },
+        { field: "Address",                     customer: "Paris, France",   watchlist: "N/A",                match: false },
+      ] },
+    { label: "BERNHARD, Benjamin", sublabel: "EU Sanctions", risk: "high",  nodeType: "person" as const, matchScore: 44, matchedAttributeIndices: [13,14,21],
+      matchFields: [
+        { field: "Name",                        customer: "Benjamin Bernard", watchlist: "BERNHARD, Benjamin",match: false },
+        { field: "Year of Birth (YOB)",         customer: "1983",            watchlist: "1983",               match: true  },
+        { field: "Country of Birth",            customer: "France",          watchlist: "Germany",            match: false },
+        { field: "Day of Birth (DOB)",          customer: "3 Jun",           watchlist: "3 Jun",              match: true  },
+        { field: "Deceased Status",             customer: "FALSE",           watchlist: "FALSE",              match: true  },
+        { field: "Primary Name",               customer: "BERNARD, Benjamin",watchlist: "BERNHARD, Benjamin",match: false },
+        { field: "Former or Alias Name",        customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Gender",                      customer: "Male",            watchlist: "Male",               match: true  },
+        { field: "Nationality",                 customer: "FRA",             watchlist: "DEU",                match: false },
+        { field: "Occupation",                  customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Weak Link",                   customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "C2C",                         customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Passport/Tax/Identification", customer: "10FX39201",       watchlist: "N/A",                match: false },
+        { field: "Address",                     customer: "Paris, France",   watchlist: "N/A",                match: false },
+      ] },
+    { label: "BERNARD, Benjamen", sublabel: "Adverse Media",  risk: "high",  nodeType: "person" as const, matchScore: 40, matchedAttributeIndices: [13,18],
+      matchFields: [
+        { field: "Name",                        customer: "Benjamin Bernard", watchlist: "BERNARD, Benjamen",match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1983",            watchlist: "1981",               match: false },
+        { field: "Country of Birth",            customer: "France",          watchlist: "Belgium",            match: false },
+        { field: "Day of Birth (DOB)",          customer: "3 Jun",           watchlist: "14 Feb",             match: false },
+        { field: "Deceased Status",             customer: "FALSE",           watchlist: "FALSE",              match: true  },
+        { field: "Primary Name",               customer: "BERNARD, Benjamin",watchlist: "BERNARD, Benjamen",match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Gender",                      customer: "Male",            watchlist: "N/A",                match: false },
+        { field: "Nationality",                 customer: "FRA",             watchlist: "BEL",                match: false },
+        { field: "Occupation",                  customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Weak Link",                   customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "C2C",                         customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Passport/Tax/Identification", customer: "10FX39201",       watchlist: "N/A",                match: false },
+        { field: "Address",                     customer: "Paris, France",   watchlist: "N/A",                match: false },
+      ] },
+    { label: "BENARD, Benjamin",  sublabel: "Interpol",      risk: "medium", nodeType: "person" as const, matchScore: 36, matchedAttributeIndices: [13,14,20],
+      matchFields: [
+        { field: "Name",                        customer: "Benjamin Bernard", watchlist: "BENARD, Benjamin",  match: false },
+        { field: "Year of Birth (YOB)",         customer: "1983",            watchlist: "1983",               match: true  },
+        { field: "Country of Birth",            customer: "France",          watchlist: "Switzerland",        match: false },
+        { field: "Day of Birth (DOB)",          customer: "3 Jun",           watchlist: "3 Jun",              match: true  },
+        { field: "Deceased Status",             customer: "FALSE",           watchlist: "FALSE",              match: true  },
+        { field: "Primary Name",               customer: "BERNARD, Benjamin",watchlist: "BENARD, Benjamin",  match: false },
+        { field: "Former or Alias Name",        customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Gender",                      customer: "Male",            watchlist: "N/A",                match: false },
+        { field: "Nationality",                 customer: "FRA",             watchlist: "CHE",                match: false },
+        { field: "Occupation",                  customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Weak Link",                   customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "C2C",                         customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Passport/Tax/Identification", customer: "10FX39201",       watchlist: "N/A",                match: false },
+        { field: "Address",                     customer: "Paris, France",   watchlist: "N/A",                match: false },
+      ] },
+    { label: "BERNARD, Benjmin",  sublabel: "OFAC SDN",      risk: "medium", nodeType: "person" as const, matchScore: 32, matchedAttributeIndices: [13,15,19],
+      matchFields: [
+        { field: "Name",                        customer: "Benjamin Bernard", watchlist: "BERNARD, Benjmin",  match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1983",            watchlist: "1985",               match: false },
+        { field: "Country of Birth",            customer: "France",          watchlist: "France",             match: true  },
+        { field: "Day of Birth (DOB)",          customer: "3 Jun",           watchlist: "11 Sep",             match: false },
+        { field: "Deceased Status",             customer: "FALSE",           watchlist: "FALSE",              match: true  },
+        { field: "Primary Name",               customer: "BERNARD, Benjamin",watchlist: "BERNARD, Benjmin",  match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Gender",                      customer: "Male",            watchlist: "N/A",                match: false },
+        { field: "Nationality",                 customer: "FRA",             watchlist: "FRA",                match: true  },
+        { field: "Occupation",                  customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Weak Link",                   customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "C2C",                         customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Passport/Tax/Identification", customer: "10FX39201",       watchlist: "N/A",                match: false },
+        { field: "Address",                     customer: "Paris, France",   watchlist: "N/A",                match: false },
+      ] },
+    { label: "BERNERD, Benjamin", sublabel: "EU Sanctions",   risk: "medium", nodeType: "person" as const, matchScore: 28, matchedAttributeIndices: [13,21],
+      matchFields: [
+        { field: "Name",                        customer: "Benjamin Bernard", watchlist: "BERNERD, Benjamin", match: false },
+        { field: "Year of Birth (YOB)",         customer: "1983",            watchlist: "1980",               match: false },
+        { field: "Country of Birth",            customer: "France",          watchlist: "Netherlands",        match: false },
+        { field: "Day of Birth (DOB)",          customer: "3 Jun",           watchlist: "27 Jul",             match: false },
+        { field: "Deceased Status",             customer: "FALSE",           watchlist: "FALSE",              match: true  },
+        { field: "Primary Name",               customer: "BERNARD, Benjamin",watchlist: "BERNERD, Benjamin", match: false },
+        { field: "Former or Alias Name",        customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Gender",                      customer: "Male",            watchlist: "Male",               match: true  },
+        { field: "Nationality",                 customer: "FRA",             watchlist: "NLD",                match: false },
+        { field: "Occupation",                  customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Weak Link",                   customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "C2C",                         customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Passport/Tax/Identification", customer: "10FX39201",       watchlist: "N/A",                match: false },
+        { field: "Address",                     customer: "Paris, France",   watchlist: "N/A",                match: false },
+      ] },
+    { label: "BEN, Bernard",      sublabel: "Adverse Media",  risk: "medium", nodeType: "person" as const, matchScore: 24, matchedAttributeIndices: [13,15,18],
+      matchFields: [
+        { field: "Name",                        customer: "Benjamin Bernard", watchlist: "BEN, Bernard",       match: false },
+        { field: "Year of Birth (YOB)",         customer: "1983",            watchlist: "1979",               match: false },
+        { field: "Country of Birth",            customer: "France",          watchlist: "France",             match: true  },
+        { field: "Day of Birth (DOB)",          customer: "3 Jun",           watchlist: "20 Mar",             match: false },
+        { field: "Deceased Status",             customer: "FALSE",           watchlist: "FALSE",              match: true  },
+        { field: "Primary Name",               customer: "BERNARD, Benjamin",watchlist: "BEN, Bernard",       match: false },
+        { field: "Former or Alias Name",        customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Gender",                      customer: "Male",            watchlist: "N/A",                match: false },
+        { field: "Nationality",                 customer: "FRA",             watchlist: "FRA",                match: true  },
+        { field: "Occupation",                  customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Weak Link",                   customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "C2C",                         customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Passport/Tax/Identification", customer: "10FX39201",       watchlist: "N/A",                match: false },
+        { field: "Address",                     customer: "Paris, France",   watchlist: "N/A",                match: false },
+      ] },
+    { label: "BERNARD, Benji",    sublabel: "Interpol",       risk: "medium", nodeType: "person" as const, matchScore: 20, matchedAttributeIndices: [13,15,20],
+      matchFields: [
+        { field: "Name",                        customer: "Benjamin Bernard", watchlist: "BERNARD, Benji",    match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1983",            watchlist: "1982",               match: false },
+        { field: "Country of Birth",            customer: "France",          watchlist: "France",             match: true  },
+        { field: "Day of Birth (DOB)",          customer: "3 Jun",           watchlist: "1 Dec",              match: false },
+        { field: "Deceased Status",             customer: "FALSE",           watchlist: "FALSE",              match: true  },
+        { field: "Primary Name",               customer: "BERNARD, Benjamin",watchlist: "BERNARD, Benji",    match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Gender",                      customer: "Male",            watchlist: "N/A",                match: false },
+        { field: "Nationality",                 customer: "FRA",             watchlist: "FRA",                match: true  },
+        { field: "Occupation",                  customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Weak Link",                   customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "C2C",                         customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Passport/Tax/Identification", customer: "10FX39201",       watchlist: "N/A",                match: false },
+        { field: "Address",                     customer: "Paris, France",   watchlist: "N/A",                match: false },
+      ] },
+    { label: "B. BERNARD",        sublabel: "World Bank",     risk: "low",    nodeType: "person" as const, matchScore: 16, matchedAttributeIndices: [13,22],
+      matchFields: [
+        { field: "Name",                        customer: "Benjamin Bernard", watchlist: "B. BERNARD",        match: false },
+        { field: "Year of Birth (YOB)",         customer: "1983",            watchlist: "Unknown",            match: false },
+        { field: "Country of Birth",            customer: "France",          watchlist: "Unknown",            match: false },
+        { field: "Day of Birth (DOB)",          customer: "3 Jun",           watchlist: "Unknown",            match: false },
+        { field: "Deceased Status",             customer: "FALSE",           watchlist: "FALSE",              match: true  },
+        { field: "Primary Name",               customer: "BERNARD, Benjamin",watchlist: "B. BERNARD",        match: false },
+        { field: "Former or Alias Name",        customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Gender",                      customer: "Male",            watchlist: "N/A",                match: false },
+        { field: "Nationality",                 customer: "FRA",             watchlist: "Unknown",            match: false },
+        { field: "Occupation",                  customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Weak Link",                   customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "C2C",                         customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Passport/Tax/Identification", customer: "10FX39201",       watchlist: "N/A",                match: false },
+        { field: "Address",                     customer: "Paris, France",   watchlist: "N/A",                match: false },
+      ] },
+    { label: "BERNARD, Beniamin", sublabel: "EU Sanctions",   risk: "low",    nodeType: "person" as const, matchScore: 12, matchedAttributeIndices: [13,21],
+      matchFields: [
+        { field: "Name",                        customer: "Benjamin Bernard", watchlist: "BERNARD, Beniamin", match: true  },
+        { field: "Year of Birth (YOB)",         customer: "1983",            watchlist: "1990",               match: false },
+        { field: "Country of Birth",            customer: "France",          watchlist: "Poland",             match: false },
+        { field: "Day of Birth (DOB)",          customer: "3 Jun",           watchlist: "8 Oct",              match: false },
+        { field: "Deceased Status",             customer: "FALSE",           watchlist: "FALSE",              match: true  },
+        { field: "Primary Name",               customer: "BERNARD, Benjamin",watchlist: "BERNARD, Beniamin", match: true  },
+        { field: "Former or Alias Name",        customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Gender",                      customer: "Male",            watchlist: "N/A",                match: false },
+        { field: "Nationality",                 customer: "FRA",             watchlist: "POL",                match: false },
+        { field: "Occupation",                  customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Weak Link",                   customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "C2C",                         customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Passport/Tax/Identification", customer: "10FX39201",       watchlist: "N/A",                match: false },
+        { field: "Address",                     customer: "Paris, France",   watchlist: "N/A",                match: false },
+      ] },
+    { label: "BERNHARD, Ben",     sublabel: "Interpol",       risk: "low",    nodeType: "person" as const, matchScore: 10, matchedAttributeIndices: [13,20],
+      matchFields: [
+        { field: "Name",                        customer: "Benjamin Bernard", watchlist: "BERNHARD, Ben",     match: false },
+        { field: "Year of Birth (YOB)",         customer: "1983",            watchlist: "1988",               match: false },
+        { field: "Country of Birth",            customer: "France",          watchlist: "Germany",            match: false },
+        { field: "Day of Birth (DOB)",          customer: "3 Jun",           watchlist: "15 Feb",             match: false },
+        { field: "Deceased Status",             customer: "FALSE",           watchlist: "FALSE",              match: true  },
+        { field: "Primary Name",               customer: "BERNARD, Benjamin",watchlist: "BERNHARD, Ben",     match: false },
+        { field: "Former or Alias Name",        customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Gender",                      customer: "Male",            watchlist: "N/A",                match: false },
+        { field: "Nationality",                 customer: "FRA",             watchlist: "DEU",                match: false },
+        { field: "Occupation",                  customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Weak Link",                   customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "C2C",                         customer: "N/A",             watchlist: "N/A",                match: true  },
+        { field: "Passport/Tax/Identification", customer: "10FX39201",       watchlist: "N/A",                match: false },
+        { field: "Address",                     customer: "Paris, France",   watchlist: "N/A",                match: false },
+      ] },
+    // attr indices 13–26: 14 identifier fields
+    { label: "Name",                        sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "name"    as const },
+    { label: "Year of Birth (YOB)",         sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "dob"     as const },
+    { label: "Country of Birth",            sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Day of Birth (DOB)",          sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "dob"     as const },
+    { label: "Deceased Status",             sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Primary Name",               sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "name"    as const },
+    { label: "Former or Alias Name",        sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "name"    as const },
+    { label: "Gender",                      sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Nationality",                 sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Occupation",                  sublabel: "Profile",  risk: "high" as const, nodeType: "attribute" as const, attrIcon: "bank"    as const },
+    { label: "Weak Link",                   sublabel: "Linkage",  risk: "high" as const, nodeType: "attribute" as const, attrIcon: "bank"    as const },
+    { label: "C2C",                         sublabel: "Linkage",  risk: "high" as const, nodeType: "attribute" as const, attrIcon: "bank"    as const },
+    { label: "Passport/Tax/Identification", sublabel: "Identity", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "id"      as const },
+    { label: "Address",                     sublabel: "Geo",      risk: "high" as const, nodeType: "attribute" as const, attrIcon: "address" as const },
+    // worldcheck source nodes — indices 27–31
     { label: "Adverse Media DB",     sublabel: "WorldCheck", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "source" as const },
     { label: "OFAC SDN List",        sublabel: "WorldCheck", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "source" as const },
     { label: "Interpol Red Notices", sublabel: "WorldCheck", risk: "high" as const, nodeType: "attribute" as const, attrIcon: "source" as const },
@@ -604,8 +1446,9 @@ function ResizeHandle({ onDelta, dark, alwaysShow, onClick }: { onDelta: (dx: nu
 
 // ─── CaseListItem ─────────────────────────────────────────────────────────────
 
-function CaseListItem({ item, selected, onClick, darkMode, pinned }: {
+function CaseListItem({ item, selected, onClick, darkMode, pinned, topMatchFields }: {
   item: typeof cases[0]; selected: boolean; onClick: () => void; darkMode: boolean; pinned?: boolean;
+  topMatchFields?: Array<{ match: boolean }> | null;
 }) {
   const dm = (l: string, d: string) => darkMode ? d : l;
   return (
@@ -640,14 +1483,31 @@ function CaseListItem({ item, selected, onClick, darkMode, pinned }: {
             </div>
           </div>
           <div className="flex items-center gap-1.5 mb-0.5">
-            <span className={`text-[13px] truncate ${dm("text-gray-700","text-gray-400")}`}>
+            <span className={`text-[13px] truncate flex-1 min-w-0 ${dm("text-gray-700","text-gray-400")}`}>
               ↔ <span className="font-medium">{item.watchlistName}</span>
             </span>
-            <span className={`text-xs font-semibold ml-auto flex-shrink-0 ${riskTextColor[item.risk]}`}>{item.confidence}%</span>
+            <span className={`text-xs font-semibold flex-shrink-0 ${riskTextColor[item.risk]}`}>{item.confidence}%</span>
           </div>
-          <p className={`text-xs ${dm("text-gray-600","text-gray-500")}`}>
-            {item.matchCount} total matches
-          </p>
+          <div className="flex items-center gap-2">
+            {topMatchFields && topMatchFields.length > 0 && (() => {
+              const secondary = topMatchFields.slice(5, 14);
+              const secMatched = secondary.filter(f => f.match).length;
+              const isHigh = secMatched >= 7;
+              const matched = topMatchFields.filter(f => f.match).length;
+              const total   = topMatchFields.length;
+              return (
+                <span className="flex-shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded" style={isHigh
+                  ? { background: darkMode ? "rgba(239,68,68,0.15)" : "rgba(239,68,68,0.10)", color: darkMode ? "rgb(252,165,165)" : "rgb(185,28,28)", border: `1px solid ${darkMode ? "rgba(239,68,68,0.28)" : "rgba(239,68,68,0.25)"}` }
+                  : { background: darkMode ? "rgba(251,146,60,0.15)" : "rgba(251,146,60,0.10)", color: darkMode ? "rgb(253,186,116)" : "rgb(194,65,12)", border: `1px solid ${darkMode ? "rgba(251,146,60,0.25)" : "rgba(251,146,60,0.30)"}` }
+                }>
+                  {matched}/{total} identifiers
+                </span>
+              );
+            })()}
+            <p className={`text-xs ${dm("text-gray-600","text-gray-500")}`}>
+              {item.matchCount} total matches
+            </p>
+          </div>
         </div>
       </div>
     </button>
@@ -667,6 +1527,7 @@ export default function Dashboard() {
   const [selectedCaseId, setSelectedCaseId] = useState<number | null>(null);
   const [caseTab, setCaseTab]               = useState<"overview"|"details"|"caselog"|"audit">("overview");
   const [networkVisible, setNetworkVisible] = useState(true);
+  const [forceExpandPanel, setForceExpandPanel] = useState(false);
   const [dispositionSubmitted, setDispositionSubmitted] = useState(false);
   const [submittedAt, setSubmittedAt]             = useState<string>("");
   const [submittedChoice, setSubmittedChoice]     = useState<"false-positive"|"true-hit-high"|"true-hit-medium"|null>(null);
@@ -677,9 +1538,11 @@ export default function Dashboard() {
   const [chatInput, setChatInput]           = useState("");
   const [chatMessages, setChatMessages]     = useState<ChatMsg[]>([]);
   const [comparisonNode, setComparisonNode] = useState<FraudNode | null>(null);
+  const [sourceActiveLabels, setSourceActiveLabels] = useState<string[] | null>(null);
+  const [activeAttrLabel, setActiveAttrLabel]       = useState<string | null>(null);
   const [rightPaneOpen, setRightPaneOpen] = useState(true);
-  const [rightPaneWidth, setRightPaneWidth] = useState(340);
-  const [caseFilter, setCaseFilter] = useState<"all" | "unread" | "high" | "medium" | "low">("all");
+  const [rightPaneWidth, setRightPaneWidth] = useState(400);
+  const [caseFilter, setCaseFilter] = useState<"all" | "unread" | "high" | "low">("all");
   const [dispositionChoice, setDispositionChoice] = useState<"false-positive" | "true-hit-high" | "true-hit-medium" | null>(null);
   const [trueHitStep, setTrueHitStep] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -697,6 +1560,7 @@ export default function Dashboard() {
   const [adverseSearchState, setAdverseSearchState] = useState<'idle'|'loading'|'complete'>('idle');
   const [adverseAttrNodes, setAdverseAttrNodes]     = useState<FraudNode[]>([]);
   const [primaryScoreBoost, setPrimaryScoreBoost]   = useState(0);
+  const [adverseMatchUnlocked, setAdverseMatchUnlocked] = useState(false);
   const [searchOpen, setSearchOpen]           = useState(false);
   const [searchQuery, setSearchQuery]         = useState("");
   const chatEndRef                            = useRef<HTMLDivElement>(null);
@@ -707,8 +1571,9 @@ export default function Dashboard() {
 
   // ── Panel handlers ────────────────────────────────────────────────────────
   const hideNetwork = () => {
-    if (!rightPaneOpen) setRightPaneOpen(true); // restore match analysis first
+    if (!rightPaneOpen) setRightPaneOpen(true);
     setNetworkVisible(false);
+    setForceExpandPanel(false);
   };
   const showNetwork = () => setNetworkVisible(true);
   const collapseMatchAnalysis = () => { if (networkVisible) setRightPaneOpen(false); };
@@ -717,7 +1582,7 @@ export default function Dashboard() {
   // Guard: match analysis and network can never both be hidden
   useEffect(() => {
     if (!networkVisible && !rightPaneOpen) setRightPaneOpen(true);
-  }, [networkVisible, rightPaneOpen]);
+  }, [networkVisible]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dm           = (l: string, d: string) => darkMode ? d : l;
   const selectedCase = cases.find(c => c.id === selectedCaseId) ?? null;
@@ -762,9 +1627,11 @@ export default function Dashboard() {
       setAdverseSearchState('idle');
       setAdverseAttrNodes([]);
       setPrimaryScoreBoost(0);
+      setAdverseMatchUnlocked(false);
       const caseNodes = CASE_NODES[selectedCaseId as number] ?? [];
       const defaultNode = caseNodes.find((n: FraudNode) => n.risk === "critical") ?? caseNodes.find((n: FraudNode) => n.risk === "high") ?? caseNodes[0] ?? null;
       setComparisonNode(defaultNode);
+      setSourceActiveLabels(null);
       setRightPaneOpen(true);
     }
   }, [selectedCaseId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -848,6 +1715,17 @@ export default function Dashboard() {
     }, 4500);
   };
   const handleTriggerAdverseSearch = () => {
+    // If match analysis is showing a different node, snap it to the primary node the search is about
+    const personNodes = (CASE_NODES[selectedCaseId as number] ?? []).filter((n: FraudNode) => n.nodeType !== "attribute");
+    const primaryNode = personNodes.length > 0 ? personNodes.reduce((b: FraudNode, n: FraudNode) => (n.matchScore ?? 0) > (b.matchScore ?? 0) ? n : b, personNodes[0]) : null;
+    if (primaryNode && comparisonNode?.label !== primaryNode.label) {
+      setAdverseDetail(null);
+      setComparisonNode(primaryNode);
+      setDispositionChoice(null);
+      setDispositionComment("");
+      setDispositionSubmitted(false);
+      setTrueHitStep(false);
+    }
     setAdverseSearchState('loading');
     setRightPaneOpen(true);
     setAccordionValue(prev => [...new Set([...prev, 'sources'])]);
@@ -873,7 +1751,11 @@ export default function Dashboard() {
     setAdverseAttrNodes([
       { label: "Loading…", attrIcon: "news" as const, nodeType: "attribute" as const, risk: "high" as const, isTrueHit: false, isLoading: true },
       { label: "Loading…", attrIcon: "news" as const, nodeType: "attribute" as const, risk: "high" as const, isTrueHit: false, isLoading: true },
+      { label: "Loading…", attrIcon: "news" as const, nodeType: "attribute" as const, risk: "high" as const, isTrueHit: false, isLoading: true },
+      { label: "Loading…", attrIcon: "news" as const, nodeType: "attribute" as const, risk: "high" as const, isTrueHit: false, isLoading: true },
     ]);
+    // Collapse identifiers accordion so attention shifts to the news nodes being added
+    setAccordionValue(prev => prev.filter(v => v !== 'identifiers'));
     setTimeout(() => {
       setChatMessages(prev => prev.map(m => m.reasoning && !m.reasoning.done ? { ...m, reasoning: { ...m.reasoning, done: true } } : m));
       setChatMessages(prev => [...prev, { role: 'ai' as const, content: '', copilotStep: 'sources' as const }]);
@@ -883,16 +1765,22 @@ export default function Dashboard() {
       setReviewState(s => ({ ...s, adverseNewsReviewed: true }));
       // Adverse news corroborates one more identifier — boost primary node score 90→93
       setPrimaryScoreBoost(3);
+      setAdverseMatchUnlocked(true);
       setComparisonNode(prev => {
         if (!prev || prev.nodeType === "attribute") return prev;
         const pNodes = (CASE_NODES[selectedCaseId as number] ?? []).filter((n: FraudNode) => n.nodeType !== "attribute");
         const primary = pNodes.length > 0 ? pNodes.reduce((b: FraudNode, n: FraudNode) => (n.matchScore ?? 0) > (b.matchScore ?? 0) ? n : b, pNodes[0]) : null;
-        return (primary && prev.label === primary.label) ? { ...prev, matchScore: 93 } : prev;
+        if (!primary || prev.label !== primary.label) return prev;
+        return {
+          ...prev,
+          matchScore: 93,
+          matchFields: prev.matchFields?.map(f => f.field === "Occupation" ? { ...f, match: true } : f),
+        };
       });
-      // Replace skeletons with real nodes — same count so canvas won't re-animate
-      setAdverseAttrNodes(ADVERSE_ARTICLES.slice(0, 2).map(art => ({
+      // Replace skeletons with real nodes — 4 articles, sublabel is fixed source type label
+      setAdverseAttrNodes(ADVERSE_ARTICLES.map(art => ({
         label:    art.outlet,
-        sublabel: art.headline.length > 38 ? art.headline.slice(0, 38) + "…" : art.headline,
+        sublabel: "Verified News Source",
         attrIcon: "news" as const,
         nodeType: "attribute" as const,
         risk:     "high" as const,
@@ -959,13 +1847,13 @@ export default function Dashboard() {
   };
 
   const innerCardStyle = {
-    border: `1px solid ${darkMode ? "rgba(255,255,255,0.11)" : "rgba(99,102,241,0.18)"}`,
-    background: darkMode ? "rgba(28,22,52,0.72)" : "rgba(255,255,255,0.72)",
-    backdropFilter: darkMode ? "blur(36px) saturate(2.2) brightness(0.88)" : "blur(20px) saturate(1.5)",
-    WebkitBackdropFilter: darkMode ? "blur(36px) saturate(2.2) brightness(0.88)" : "blur(20px) saturate(1.5)",
+    border: `1px solid ${darkMode ? "rgba(255,255,255,0.09)" : "rgba(99,102,241,0.15)"}`,
+    background: darkMode ? "rgba(28,22,52,0.01)" : "rgba(255,255,255,0.48)",
+    backdropFilter: darkMode ? "blur(20px) saturate(1.8) brightness(0.80)" : "blur(52px) saturate(1.6)",
+    WebkitBackdropFilter: darkMode ? "blur(20px) saturate(1.8) brightness(0.80)" : "blur(52px) saturate(1.6)",
     boxShadow: darkMode
-      ? "0 2px 8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.10), inset 0 0 0 0.5px rgba(255,255,255,0.06)"
-      : "0 2px 16px rgba(99,102,241,0.08), inset 0 1px 0 rgba(255,255,255,0.90)",
+      ? "0 2px 8px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08), inset 0 0 0 0.5px rgba(255,255,255,0.04)"
+      : "0 2px 16px rgba(99,102,241,0.06), inset 0 1px 0 rgba(255,255,255,0.80)",
   };
 
   const barStyle = {
@@ -976,25 +1864,67 @@ export default function Dashboard() {
   };
 
   const chatPanelStyle = {
-    background: darkMode ? "rgba(8,6,22,0.36)" : "rgba(255,255,255,0.72)",
-    backdropFilter: "blur(48px) saturate(1.8) brightness(1.04)",
-    WebkitBackdropFilter: "blur(48px) saturate(1.8) brightness(1.04)",
+    background: darkMode ? "rgba(8,6,22,0.06)" : "rgba(255,255,255,0.48)",
+    backdropFilter: darkMode ? "blur(20px) saturate(1.8) brightness(0.82)" : "blur(60px) saturate(1.6) brightness(1.02)",
+    WebkitBackdropFilter: darkMode ? "blur(20px) saturate(1.8) brightness(0.82)" : "blur(60px) saturate(1.6) brightness(1.02)",
     borderLeft: `1px solid ${darkMode ? "rgba(139,92,246,0.18)" : "rgba(99,102,241,0.20)"}`,
     boxShadow: darkMode
       ? "inset 1px 0 0 rgba(139,92,246,0.12), -4px 0 32px rgba(0,0,0,0.35)"
       : "inset 1px 0 0 rgba(99,102,241,0.10), -4px 0 24px rgba(99,102,241,0.06)",
   };
 
-  const caseNodes    = selectedCase ? (CASE_NODES[selectedCase.id] ?? []) : [];
+  const caseNodes = selectedCase ? (() => {
+    const all = CASE_NODES[selectedCase.id] ?? [];
+    const persons = all.filter((n: FraudNode) => n.nodeType !== "attribute")
+      .sort((a: FraudNode, b: FraudNode) => (b.matchScore ?? 0) - (a.matchScore ?? 0))
+      .slice(0, 7);
+    // Build field→customer-value map from strongest person node
+    const strongest = persons[0];
+    const valueMap: Record<string, string> = {};
+    (strongest?.matchFields ?? []).forEach(f => { if (f.customer && f.customer !== "N/A") valueMap[f.field] = f.customer; });
+    // Collect source keys that the top-7 persons actually reference
+    const personSourceKeys = new Set(persons.map((n: FraudNode) => {
+      const l = (n.sublabel ?? "").toLowerCase();
+      if (l.includes("ofac") || l.includes("sdn")) return "ofac";
+      if (l.includes("interpol"))  return "interpol";
+      if (l.includes("world bank")) return "world bank";
+      if (l.includes("adverse"))   return "adverse";
+      if (l.includes("un pep"))    return "un pep";
+      if (l.includes("eu pep"))    return "eu pep";
+      if (l.includes("un ") || l === "un sanctions" || l === "un") return "un";
+      if (l.includes("eu ") || l === "eu sanctions") return "eu";
+      if (l.includes("pep"))       return "pep";
+      return l;
+    }));
+    let primaryCount = 0;
+    const attrs = all.filter((n: FraudNode) => n.nodeType === "attribute").filter((n: FraudNode) => {
+      if (n.attrIcon !== "source") return true;
+      // Only keep source nodes whose list is referenced by at least one top-7 person
+      const lbl = n.label.toLowerCase();
+      for (const key of personSourceKeys) {
+        if (lbl.includes(key)) return true;
+      }
+      return false;
+    }).map((n: FraudNode) => {
+      if (n.attrIcon === "source" || n.attrIcon === "news") return n;
+      const group: "primary" | "secondary" = primaryCount < 5 ? "primary" : "secondary";
+      primaryCount++;
+      return { ...n, attrGroup: group, sublabel: valueMap[n.label] ?? n.sublabel };
+    });
+    return [...persons, ...attrs];
+  })() : [];
   const displayNodes = useMemo(() => caseNodes.map(n => ({
     ...n,
     isDisposed:   submittedNodes.has(n.label),
     isTrueHit:    (() => { const s = submittedNodes.get(n.label); return !!s && s !== "false-positive"; })(),
     isForcedAuto: forcedAutoDisposed.has(n.label),
-  })), [caseNodes, submittedNodes, forcedAutoDisposed]); // eslint-disable-line react-hooks/exhaustive-deps
+    matchFields: adverseMatchUnlocked && n.label === "LI, Bin"
+      ? n.matchFields?.map(f => f.field === "Occupation" ? { ...f, match: true } : f)
+      : n.matchFields,
+  })), [caseNodes, submittedNodes, forcedAutoDisposed, adverseMatchUnlocked]); // eslint-disable-line react-hooks/exhaustive-deps
   const activeNodes  = caseNodes.filter(n => !submittedNodes.has(n.label));
-  const critNodes    = caseNodes.filter(n => n.risk === "critical").length;
-  const highNodes    = caseNodes.filter(n => n.risk === "high").length;
+  const critNodes    = caseNodes.filter(n => n.nodeType !== "attribute" && n.risk === "critical").length;
+  const highNodes    = caseNodes.filter(n => n.nodeType !== "attribute" && n.risk === "high").length;
   const strongestNode = caseNodes.length > 0 ? caseNodes.reduce((b, n) => (n.matchScore ?? 0) > (b.matchScore ?? 0) ? n : b, caseNodes[0]) : null;
   const isReasoningLoading = chatMessages.some(m => m.reasoning && !m.reasoning.done) && !chatMessages.some(m => m.copilotStep);
 
@@ -1006,26 +1936,75 @@ export default function Dashboard() {
       .map((n, i) => ({ n, i }))
       .filter(({ n }) => n.nodeType !== "attribute")
       .sort((a, b) => (b.n.matchScore ?? 0) - (a.n.matchScore ?? 0));
-    const primaryIdx  = personIdxByScore[0]?.i ?? -1;
-    const newsIndices = adverseAttrNodes.map((_, ai) => baseIdx + ai);
+    const primaryIdx   = personIdxByScore[0]?.i ?? -1;
+    const secondaryIdx = personIdxByScore[1]?.i ?? -1;
+    const tertiaryIdx  = personIdxByScore[2]?.i ?? -1;
+    const newsIndices  = adverseAttrNodes.map((_, ai) => baseIdx + ai);
     const adverseLoaded = adverseAttrNodes.every(n => !n.isLoading);
     return displayNodes.map((n, i) => {
       if (i === primaryIdx) {
-        // Both news articles reference LI, Bin — link all news nodes to the primary
         return {
           ...n,
           matchScore: adverseLoaded ? (n.matchScore ?? 0) + primaryScoreBoost : n.matchScore,
           matchedAttributeIndices: [...(n.matchedAttributeIndices ?? []), ...newsIndices],
         };
       }
+      if (i === secondaryIdx && newsIndices.length > 0) {
+        return {
+          ...n,
+          matchedAttributeIndices: [...(n.matchedAttributeIndices ?? []), newsIndices[0]],
+        };
+      }
+      if (i === tertiaryIdx && newsIndices.length > 2) {
+        return {
+          ...n,
+          matchedAttributeIndices: [...(n.matchedAttributeIndices ?? []), newsIndices[2]],
+        };
+      }
       return n;
-    }).concat(adverseAttrNodes.map(n => ({ ...n, isDisposed: false, isTrueHit: false, isForcedAuto: false })));
+    }).concat(adverseAttrNodes.map(n => ({ ...n, matchFields: n.matchFields, isDisposed: false, isTrueHit: false, isForcedAuto: false })));
   }, [displayNodes, adverseAttrNodes, primaryScoreBoost]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // While the initial reasoning is loading, show all surrounding nodes as skeleton placeholders
-  const graphNodes = useMemo(() =>
-    isReasoningLoading ? canvasNodes.map(n => ({ ...n, isLoading: true })) : canvasNodes,
-  [isReasoningLoading, canvasNodes]); // eslint-disable-line react-hooks/exhaustive-deps
+  // While the initial reasoning is loading, show all surrounding nodes as skeleton placeholders.
+  // Also derives matchedAttributeIndices dynamically from matchFields so each person node
+  // connects to exactly the identifier attr nodes it actually matches, plus its source node.
+  const graphNodes = useMemo(() => {
+    const base = isReasoningLoading
+      ? canvasNodes.filter(n => n.nodeType === "person").map(n => ({ ...n, isLoading: true }))
+      : canvasNodes;
+    // Build label→index map for identifier attr nodes (non-WorldCheck attributes)
+    const fieldAttrMap: Record<string, number> = {};
+    base.forEach((n, i) => {
+      if (n.nodeType === "attribute" && n.sublabel !== "WorldCheck") fieldAttrMap[n.label] = i;
+    });
+    // Map person sublabel to partial source label for fuzzy match
+    const sublabelKey = (s: string) => {
+      const l = s.toLowerCase();
+      if (l.includes("ofac")) return "ofac";
+      if (l.includes("interpol")) return "interpol";
+      if (l.includes("world bank")) return "world bank";
+      if (l.includes("adverse")) return "adverse";
+      if (l === "un pep" || l === "un pep list") return "un pep";
+      if (l === "eu pep" || l === "eu pep list") return "eu pep";
+      if (l.includes("un ") || l === "un sanctions") return "un ";
+      if (l.includes("eu ") || l === "eu sanctions") return "eu ";
+      if (l.includes("pep")) return "pep";
+      return l;
+    };
+    return base.map(node => {
+      if (node.nodeType !== "person" || !node.matchFields?.length) return node;
+      const identifierIndices = node.matchFields
+        .map((f, fi) => (f.match && fieldAttrMap[f.field] !== undefined ? fieldAttrMap[f.field] : -1))
+        .filter(i => i >= 0);
+      const key = sublabelKey(node.sublabel ?? "");
+      const sourceIdx = base.findIndex(n =>
+        n.nodeType === "attribute" && n.sublabel === "WorldCheck" && n.label.toLowerCase().includes(key)
+      );
+      const existingNewsIndices = (node.matchedAttributeIndices ?? []).filter(idx => base[idx]?.attrIcon === "news");
+      const computed = [...identifierIndices, ...(sourceIdx >= 0 ? [sourceIdx] : []), ...existingNewsIndices];
+      return computed.length ? { ...node, matchedAttributeIndices: computed } : node;
+    });
+  }, [isReasoningLoading, canvasNodes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const riskInlineColor: Record<string,string> = {
     Critical: "#f87171", High: "#fb923c", Medium: "#fbbf24", Low: "#4ade80",
@@ -1364,7 +2343,7 @@ export default function Dashboard() {
           <DropdownMenu>
             <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-md cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 border-none bg-transparent">
               <Avatar className="h-7 w-7">
-                <AvatarFallback className={`text-xs font-semibold ${dm("bg-gray-900 text-white","bg-indigo-600 text-white")}`}>VT</AvatarFallback>
+                <AvatarFallback className={`text-xs font-semibold ${dm("bg-gray-900 text-white","bg-indigo-600 text-white")}`}>VC</AvatarFallback>
               </Avatar>
               <ChevronDown aria-hidden="true" className={`h-3.5 w-3.5 ${dm("text-gray-400","text-gray-500")}`} />
             </DropdownMenuTrigger>
@@ -1472,11 +2451,55 @@ export default function Dashboard() {
       </aside>
 
       {/* Case list panel */}
-      <div
-        className="flex-shrink-0 transition-all duration-200 overflow-hidden rounded-lg"
-        style={{ width: caseListOpen ? caseListWidth : 6, position:"relative", zIndex:1, ...(caseListOpen ? panelStyle : {}) }}
-      >
-        <div className="h-full flex flex-col overflow-hidden" style={{ width: caseListWidth }}>
+      {(() => {
+        const showIconStrip = networkVisible && selectedCaseId !== null && !forceExpandPanel;
+        const riskStroke = (risk: string) =>
+          risk === "Critical" ? "#ef4444" : risk === "High" ? "#f59e0b" : risk === "Medium" ? "#eab308" : "#6b7280";
+        return (
+        <div
+          className="flex-shrink-0 transition-all duration-200 overflow-hidden rounded-lg"
+          style={{ width: showIconStrip ? 56 : (caseListOpen ? caseListWidth : 6), position:"relative", zIndex:1, ...((showIconStrip || caseListOpen) ? panelStyle : {}) }}
+        >
+          {showIconStrip ? (
+            /* ── Icon strip — shown when network is visible and a case is selected ── */
+            <div className="h-full flex flex-col" style={{ width: 56 }}>
+              {/* Header with inbox → expand-on-hover */}
+              <button
+                onClick={() => { setForceExpandPanel(true); setCaseListOpen(true); }}
+                title="Expand case list"
+                className="group flex-shrink-0 flex items-center justify-center transition-colors focus-visible:outline-none"
+                style={{ height: 46, width: "100%", background: "none", border: "none", cursor: "pointer", borderBottom: `1px solid ${darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` }}
+              >
+                <Inbox className={`h-3.5 w-3.5 transition-opacity group-hover:opacity-0 group-hover:hidden ${dm("text-gray-500","text-gray-400")}`} />
+                <PanelLeftOpen className={`h-3.5 w-3.5 hidden group-hover:block transition-opacity ${dm("text-gray-700","text-gray-200")}`} />
+              </button>
+              {/* Avatar list */}
+              <div className="flex-1 overflow-y-auto no-scrollbar" style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "10px 0", gap: 10 }}>
+                {cases.map(c => {
+                  const isSelected = selectedCaseId === c.id;
+                  const stroke = riskStroke(c.risk);
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => setSelectedCaseId(c.id === selectedCaseId ? null : c.id)}
+                      title={c.customerName}
+                      style={{ position: "relative", flexShrink: 0, padding: 0, background: "none", border: "none", cursor: "pointer" }}
+                    >
+                      {c.unread && (
+                        <span style={{ position: "absolute", top: 1, right: 1, width: 7, height: 7, borderRadius: "50%", background: "#6366f1", border: `1.5px solid ${darkMode ? "rgba(15,13,30,1)" : "rgba(248,247,255,1)"}`, zIndex: 1 }} />
+                      )}
+                      <Avatar style={{ width: 36, height: 36, border: `2px solid ${isSelected ? stroke : stroke + "55"}`, boxShadow: isSelected ? `0 0 0 3px ${stroke}28` : "none", transition: "box-shadow 0.15s, border-color 0.15s" }}>
+                        <AvatarFallback className={`text-[11px] font-bold ${darkMode ? c.colorDark : c.colorLight}`}>
+                          {c.initials}
+                        </AvatarFallback>
+                      </Avatar>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+          <div className="h-full flex flex-col overflow-hidden" style={{ width: caseListWidth }}>
 
           <div className="flex items-center justify-between px-4 flex-shrink-0" style={{ ...barStyle, height: 46, minHeight: 46 }}>
             <div className="flex items-center gap-2">
@@ -1492,7 +2515,7 @@ export default function Dashboard() {
               )}
             </div>
             <button
-              onClick={() => setCaseListOpen(false)}
+              onClick={() => { setCaseListOpen(false); setForceExpandPanel(false); }}
               aria-label="Hide case list"
               className={`p-1 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${dm("text-gray-400 hover:text-gray-700 hover:bg-white/40","text-gray-500 hover:text-gray-300 hover:bg-white/[0.07]")}`}
             >
@@ -1501,7 +2524,7 @@ export default function Dashboard() {
           </div>
           {/* Filter pills */}
           <div className="flex gap-1.5 px-3 overflow-x-auto flex-shrink-0 no-scrollbar" style={{ height: 44, alignItems: "center", borderBottom: `1px solid ${darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` }}>
-            {([ ["all","All"], ["unread","Unread"], ["high","High Match"], ["medium","Medium Match"], ["low","Low Match"] ] as const).map(([key, label]) => {
+            {([ ["all","All"], ["unread","Unread"], ["high","High Match"], ["low","Low Match"] ] as const).map(([key, label]) => {
               const active = caseFilter === key;
               return (
                 <button
@@ -1528,11 +2551,16 @@ export default function Dashboard() {
 
           <div className="flex-1 overflow-y-auto">
             {(() => {
+              const getSecondaryMatchCount = (caseId: number) => {
+                const pn = (CASE_NODES[caseId] ?? []).filter((n: FraudNode) => n.nodeType !== "attribute");
+                if (!pn.length) return 0;
+                const top = pn.reduce((b: FraudNode, n: FraudNode) => (n.matchScore ?? 0) > (b.matchScore ?? 0) ? n : b, pn[0]);
+                return (top.matchFields ?? []).slice(5, 14).filter((f: { match: boolean }) => f.match).length;
+              };
               const filtered = cases.filter(c => {
-                if (caseFilter === "unread")  return c.unread;
-                if (caseFilter === "high")    return c.confidence >= 75;
-                if (caseFilter === "medium")  return c.confidence >= 50 && c.confidence < 75;
-                if (caseFilter === "low")     return c.confidence < 50;
+                if (caseFilter === "unread") return c.unread;
+                if (caseFilter === "high")   return getSecondaryMatchCount(c.id) >= 7;
+                if (caseFilter === "low")    return getSecondaryMatchCount(c.id) < 7;
                 return true;
               });
               const pinned   = filtered.filter(c => pinnedCaseIds.has(c.id));
@@ -1546,22 +2574,25 @@ export default function Dashboard() {
                       </div>
                       {pinned.map(c => (
                         <CaseListItem key={c.id} item={c} pinned selected={selectedCaseId === c.id}
-                          onClick={() => setSelectedCaseId(c.id === selectedCaseId ? null : c.id)} darkMode={darkMode} />
+                          onClick={() => { const nid = c.id === selectedCaseId ? null : c.id; setSelectedCaseId(nid); if (nid !== null && !networkVisible) setCaseListOpen(false); }} darkMode={darkMode}
+                          topMatchFields={(() => { const pn = (CASE_NODES[c.id] ?? []).filter((n: FraudNode) => n.nodeType !== "attribute"); if (!pn.length) return null; return pn.reduce((b: FraudNode, n: FraudNode) => (n.matchScore ?? 0) > (b.matchScore ?? 0) ? n : b, pn[0]).matchFields ?? null; })()} />
                       ))}
                       <div className={`mx-3 my-1 border-t ${dm("border-gray-100","border-white/[0.06]")}`} />
                     </>
                   )}
                   {unpinned.map(c => (
                     <CaseListItem key={c.id} item={c} selected={selectedCaseId === c.id}
-                      onClick={() => setSelectedCaseId(c.id === selectedCaseId ? null : c.id)} darkMode={darkMode} />
+                      onClick={() => { const nid = c.id === selectedCaseId ? null : c.id; setSelectedCaseId(nid); if (nid !== null && !networkVisible) setCaseListOpen(false); }} darkMode={darkMode}
+                      topMatchFields={(() => { const pn = (CASE_NODES[c.id] ?? []).filter((n: FraudNode) => n.nodeType !== "attribute"); if (!pn.length) return null; return pn.reduce((b: FraudNode, n: FraudNode) => (n.matchScore ?? 0) > (b.matchScore ?? 0) ? n : b, pn[0]).matchFields ?? null; })()} />
                   ))}
                 </>
               );
             })()}
           </div>
-        </div>
-        {/* Cases panel resize / expand handle — always present */}
-        <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 8, zIndex: 10 }}>
+          </div>
+          )}
+        {/* Cases panel resize / expand handle — only in full panel mode */}
+        {!showIconStrip && <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 8, zIndex: 10 }}>
           <ResizeHandle
             alwaysShow={!caseListOpen}
             dark={darkMode}
@@ -1578,8 +2609,10 @@ export default function Dashboard() {
               }
             }}
           />
+        </div>}
         </div>
-      </div>
+        );
+      })()}
 
       {/* Main card */}
       <div
@@ -1615,31 +2648,6 @@ export default function Dashboard() {
               {/* Customer name */}
               <span className={`text-xs font-semibold flex-shrink-0 ${dm("text-gray-800","text-slate-200")}`}>
                 {selectedCase.customerName}
-              </span>
-
-              {/* Divider */}
-              <span className={`mx-2.5 flex-shrink-0 text-[10px] ${dm("text-gray-300","text-gray-600")}`}>·</span>
-
-              {/* Risk badge */}
-              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ml-1.5 flex-shrink-0 ${dm(riskBadgeLight[selectedCase.risk] ?? "", riskBadgeDark[selectedCase.risk] ?? "")}`}>
-                {selectedCase.risk}
-              </span>
-
-              {/* Confidence */}
-              <span className={`text-[10px] font-semibold ml-1.5 flex-shrink-0 ${
-                selectedCase.confidence >= 90 ? dm("text-red-600","text-red-400") :
-                selectedCase.confidence >= 70 ? dm("text-orange-500","text-orange-400") :
-                dm("text-amber-600","text-amber-400")
-              }`}>
-                {selectedCase.confidence}%
-              </span>
-
-              {/* Divider */}
-              <span className={`mx-2.5 flex-shrink-0 text-[10px] ${dm("text-gray-300","text-gray-600")}`}>·</span>
-
-              {/* Key indicators — truncated */}
-              <span className={`text-[11px] truncate min-w-0 ${dm("text-gray-400","text-gray-500")}`}>
-                {selectedCase.indicators}
               </span>
 
               {/* Time — right edge */}
@@ -1710,13 +2718,52 @@ export default function Dashboard() {
               {/* Fraud network canvas — full background */}
               {networkVisible && <FraudNetworkCanvas
                 centerLabel={selectedCase.customerName}
-                centerSublabel={`${selectedCase.watchlistSource} · ${selectedCase.confidence}% match`}
                 nodes={graphNodes}
                 dark={darkMode}
                 style={{ position:"absolute", inset:0 }}
                 selectedNodeLabel={comparisonNode?.label}
+                activeNodeLabels={sourceActiveLabels ?? undefined}
+                highlightAttrLabel={(adverseDetail ? ADVERSE_ARTICLES[adverseArticleIdx]?.outlet : activeAttrLabel) ?? undefined}
                 controlsRight={chatCollapsed ? RAIL_WIDTH + 8 : chatPanelWidth + 16}
                 onNodeClick={(node) => {
+                  // Attribute/news/source node: activate all connected persons, show highest match in pane
+                  if (node.nodeType === "attribute") {
+                    const attrIdx = graphNodes.findIndex(n => n === node);
+                    if (attrIdx < 0) return;
+                    const connectedPersons = graphNodes.filter(
+                      n => n.nodeType === "person" && (n.matchedAttributeIndices ?? []).includes(attrIdx)
+                    );
+                    if (!connectedPersons.length) return;
+                    const primaryNode = connectedPersons.reduce((b, n) => (n.matchScore ?? 0) > (b.matchScore ?? 0) ? n : b);
+                    setSourceActiveLabels(connectedPersons.map(n => n.label));
+                    setActiveAttrLabel(node.label);
+                    const isAutoDisp = primaryNode.risk === "medium" || primaryNode.risk === "low" || !!primaryNode.isForcedAuto;
+                    setAdverseDetail(null);
+                    setReviewState(s => ({ ...s, networkReviewed: true }));
+                    setComparisonNode(primaryNode);
+                    if (!primaryNode.isDisposed) {
+                      if (isAutoDisp) {
+                        setDispositionChoice("false-positive");
+                        setTrueHitStep(false);
+                        setDispositionSubmitted(false);
+                        setDispositionComment(
+                          `Match score of ${primaryNode.matchScore ?? 0}% falls below the review threshold. ` +
+                          `Name similarity detected against ${primaryNode.sublabel ?? "the watchlist"}, however date of birth, ` +
+                          `nationality, and identity document number do not align with the customer's verified records. ` +
+                          `No beneficial ownership or transactional nexus identified. Assessed as a false positive — no further action required.`
+                        );
+                      } else {
+                        setDispositionChoice(null);
+                        setDispositionComment("");
+                        setDispositionSubmitted(false);
+                        setTrueHitStep(false);
+                      }
+                    }
+                    return;
+                  }
+                  // Person node clicked: clear multi-highlight
+                  setSourceActiveLabels(null);
+                  setActiveAttrLabel(null);
                   const isAutoDisp = node.risk === "medium" || node.risk === "low" || !!node.isForcedAuto;
                   setAdverseDetail(null);
                   setReviewState(s => ({ ...s, networkReviewed: true }));
@@ -1753,7 +2800,7 @@ export default function Dashboard() {
                 transition: "left 0.22s ease",
               }}>
                 <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#818cf8", flexShrink: 0 }} />
-                {caseNodes.length} nodes
+                {caseNodes.filter((n: FraudNode) => n.nodeType !== "attribute").length} watchlist matches
                 {(critNodes + highNodes) > 0 && <span style={{ color: "#f87171", fontWeight: 600 }}>· {critNodes + highNodes} high-risk</span>}
               </div>
 
@@ -1942,9 +2989,9 @@ export default function Dashboard() {
                               {fields.length > 0 && (
                                 <div style={{ marginBottom: 12 }}>
                                   {fields.map((f, fi, arr) => (
-                                    <div key={fi} style={{ display: "grid", gridTemplateColumns: "90px 1fr", gap: 6, padding: "5px 0", borderBottom: fi < arr.length - 1 ? `1px solid ${darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)"}` : "none" }}>
-                                      <span style={{ fontSize: 13, color: dimColor }}>{f.field}</span>
-                                      <span style={{ fontSize: 13, fontWeight: 600, color: f.match ? "#4ade80" : "#f87171" }}>{f.match ? "Match" : "No match"}</span>
+                                    <div key={fi} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, padding: "5px 0", borderBottom: fi < arr.length - 1 ? `1px solid ${darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)"}` : "none" }}>
+                                      <span style={{ fontSize: 13, color: dimColor, flexShrink: 1, minWidth: 0 }}>{f.field}</span>
+                                      <span style={{ fontSize: 13, fontWeight: 600, color: f.match ? "#4ade80" : "#f87171", flexShrink: 0 }}>{f.match ? "Match" : "No match"}</span>
                                     </div>
                                   ))}
                                 </div>
@@ -1981,9 +3028,9 @@ export default function Dashboard() {
                         {msg.copilotStep === "identity" && (<>
                           <div style={{ marginBottom: 14 }}>
                             {(comparisonNode?.matchFields ?? []).map((f, fi, arr) => (
-                              <div key={fi} style={{ display: "grid", gridTemplateColumns: "90px 1fr", gap: 6, padding: "5px 0", borderBottom: fi < arr.length - 1 ? `1px solid ${darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)"}` : "none" }}>
-                                <span style={{ fontSize: 13, color: dimColor }}>{f.field}</span>
-                                <span style={{ fontSize: 13, fontWeight: 600, color: f.match ? "#4ade80" : "#f87171" }}>{f.match ? "Match" : "No match"}</span>
+                              <div key={fi} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, padding: "5px 0", borderBottom: fi < arr.length - 1 ? `1px solid ${darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)"}` : "none" }}>
+                                <span style={{ fontSize: 13, color: dimColor, flexShrink: 1, minWidth: 0 }}>{f.field}</span>
+                                <span style={{ fontSize: 13, fontWeight: 600, color: f.match ? "#4ade80" : "#f87171", flexShrink: 0 }}>{f.match ? "Match" : "No match"}</span>
                               </div>
                             ))}
                           </div>
@@ -2169,11 +3216,12 @@ export default function Dashboard() {
 
                 {/* ── Panel header — always visible ── */}
                 {(() => {
-                  const nodeIdx = comparisonNode ? activeNodes.findIndex(n => n.label === comparisonNode.label) : -1;
+                  const activePersonNodes = activeNodes.filter(n => n.nodeType !== "attribute");
+                  const nodeIdx = comparisonNode ? activePersonNodes.findIndex(n => n.label === comparisonNode.label) : -1;
                   const canPrev = nodeIdx > 0;
-                  const canNext = nodeIdx >= 0 && nodeIdx < activeNodes.length - 1;
+                  const canNext = nodeIdx >= 0 && nodeIdx < activePersonNodes.length - 1;
                   const goTo = (idx: number) => {
-                    const n = activeNodes[idx];
+                    const n = activePersonNodes[idx];
                     if (!n) return;
                     setAdverseDetail(null);
                     setComparisonNode(n);
@@ -2214,8 +3262,8 @@ export default function Dashboard() {
                               >
                                 <ChevronLeft className="h-3 w-3" style={{ color: darkMode ? "rgba(255,255,255,0.70)" : "rgba(80,60,160,0.80)" }} />
                               </BorderBeamIconButton>
-                              <span style={{ fontSize: 10, color: darkMode ? "rgba(255,255,255,0.30)" : "rgba(0,0,0,0.35)", minWidth: 28, textAlign: "center" }}>
-                                {nodeIdx >= 0 ? `${nodeIdx + 1}/${activeNodes.length}` : `·/${activeNodes.length}`}
+                              <span style={{ fontSize: 10, color: darkMode ? "rgba(255,255,255,0.30)" : "rgba(0,0,0,0.35)", minWidth: 100, textAlign: "center", whiteSpace: "nowrap" }}>
+                                {nodeIdx >= 0 ? `${nodeIdx + 1}/${activePersonNodes.length}` : `·/${activePersonNodes.length}`} watchlist records
                               </span>
                               <BorderBeamIconButton
                                 type="button" variant="outline" beamSize="sm" colorVariant="colorful"
@@ -2371,12 +3419,10 @@ export default function Dashboard() {
                     <div>
                       <div style={{ fontSize: 12, color: darkMode ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.40)", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 3 }}>Customer</div>
                       <div style={{ fontSize: 14, fontWeight: 600, color: darkMode ? "rgba(255,255,255,0.90)" : "rgba(0,0,0,0.85)" }}>{selectedCase.customerName}</div>
-                      <div style={{ fontSize: 12, color: darkMode ? "rgba(255,255,255,0.40)" : "rgba(0,0,0,0.45)", marginTop: 1 }}>{selectedCase.watchlistSource} · {selectedCase.confidence}% match</div>
                     </div>
                     <div style={{ borderLeft: `1px solid ${darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)"}`, paddingLeft: 10 }}>
                       <div style={{ fontSize: 12, color: darkMode ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.40)", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 3 }}>Watchlist Person</div>
                       <div style={{ fontSize: 14, fontWeight: 600, color: darkMode ? "rgba(255,255,255,0.90)" : "rgba(0,0,0,0.85)" }}>{comparisonNode.label}</div>
-                      <div style={{ fontSize: 12, color: darkMode ? "rgba(255,255,255,0.40)" : "rgba(0,0,0,0.45)", marginTop: 1 }}>{comparisonNode.sublabel}</div>
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
@@ -2388,6 +3434,40 @@ export default function Dashboard() {
                       {comparisonNode.matchScore ?? 0}%
                     </span>
                   </div>
+                  {/* Flag indicators — icon + label, no background */}
+                  {(() => {
+                    const sub = (comparisonNode.sublabel ?? "").toLowerCase();
+                    type FlagEntry = { label: string; Icon: React.ElementType; color: string };
+                    const flagList: FlagEntry[] = [];
+                    const sanctionLabel = sub.includes("ofac") || sub.includes("sdn") ? "Sanctioned by OFAC"
+                      : sub.includes("un sanction") || sub === "un" ? "Sanctioned by UN"
+                      : sub.includes("eu sanction") ? "Sanctioned by EU"
+                      : sub.includes("world bank") ? "Sanctioned by World Bank"
+                      : (sub.includes("sanction") || sub.includes("target") || sub.includes("blocked")) ? "Sanctioned"
+                      : null;
+                    if (sanctionLabel) flagList.push({ label: sanctionLabel, Icon: XCircle, color: "#f87171" });
+                    if (sub.includes("un pep") || sub.includes("eu pep")) {
+                      flagList.push({ label: "Foreign PEP", Icon: Landmark, color: "#a78bfa" });
+                      flagList.push({ label: "Foreign PEP RCA", Icon: Landmark, color: "#a78bfa" });
+                    } else if (sub.includes("pep")) {
+                      flagList.push({ label: "Foreign PEP", Icon: Landmark, color: "#a78bfa" });
+                      flagList.push({ label: "Foreign PEP RCA", Icon: Landmark, color: "#a78bfa" });
+                    }
+                    if (sub.includes("interpol") || sub.includes("adverse") || sub.includes("world bank")) {
+                      flagList.push({ label: "Legal Enforcement Action", Icon: Wrench, color: "#fb923c" });
+                    }
+                    if (flagList.length === 0) return null;
+                    return (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", marginTop: 6, marginBottom: 2 }}>
+                        {flagList.map(({ label, Icon, color }) => (
+                          <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 600, color, whiteSpace: "nowrap" }}>
+                            <Icon style={{ width: 11, height: 11 }} />
+                            {label}
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  })()}
 
                   {/* Accordions */}
                   <Accordion multiple value={accordionValue} onValueChange={(vals: string[]) => {
@@ -2415,25 +3495,49 @@ export default function Dashboard() {
                         </span>
                       </AccordionTrigger>
                       <AccordionContent style={{ paddingBottom: 10 }}>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                          {/* Primary identifier section header */}
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 0 7px" }}>
+                            <div style={{ flex: 1, height: 1, background: darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)" }} />
+                            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: darkMode ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.28)", flexShrink: 0 }}>Primary</span>
+                            <div style={{ flex: 1, height: 1, background: darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)" }} />
+                          </div>
                           {isReasoningLoading
                             ? (comparisonNode.matchFields ?? []).map((_, fi) => (
-                                <div key={fi} style={{ display: "grid", gridTemplateColumns: "72px 1fr 1fr 16px", gap: 6, alignItems: "center", padding: "4px 0" }}>
-                                  <div className="ai-skeleton" style={{ height: 10, width: "60%", borderRadius: 4 }} />
-                                  <div className="ai-skeleton" style={{ height: 10, borderRadius: 4 }} />
-                                  <div className="ai-skeleton" style={{ height: 10, borderRadius: 4 }} />
-                                  <div className="ai-skeleton" style={{ height: 10, width: 12, borderRadius: "50%" }} />
-                                </div>
+                                <Fragment key={fi}>
+                                  {fi === 5 && (
+                                    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 0 4px" }}>
+                                      <div style={{ flex: 1, height: 1, background: darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)" }} />
+                                      <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: darkMode ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.28)", flexShrink: 0 }}>Secondary</span>
+                                      <div style={{ flex: 1, height: 1, background: darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)" }} />
+                                    </div>
+                                  )}
+                                  <div style={{ display: "grid", gridTemplateColumns: "96px 1fr 1fr 16px", gap: 6, alignItems: "center", padding: "4px 0" }}>
+                                    <div className="ai-skeleton" style={{ height: 10, width: "60%", borderRadius: 4 }} />
+                                    <div className="ai-skeleton" style={{ height: 10, borderRadius: 4 }} />
+                                    <div className="ai-skeleton" style={{ height: 10, borderRadius: 4 }} />
+                                    <div className="ai-skeleton" style={{ height: 10, width: 12, borderRadius: "50%" }} />
+                                  </div>
+                                </Fragment>
                               ))
                             : (comparisonNode.matchFields ?? []).map((f, fi) => (
-                                <div key={fi} style={{ display: "grid", gridTemplateColumns: "72px 1fr 1fr 16px", gap: 6, alignItems: "center", padding: "4px 0" }}>
-                                  <span style={{ fontSize: 12, color: darkMode ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.40)", fontWeight: 600 }}>{f.field}</span>
-                                  <span style={{ fontSize: 12, color: darkMode ? "rgba(255,255,255,0.70)" : "rgba(0,0,0,0.65)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.customer}</span>
-                                  <span style={{ fontSize: 12, color: darkMode ? "rgba(255,255,255,0.70)" : "rgba(0,0,0,0.65)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.watchlist}</span>
-                                  <span style={{ display: "flex", justifyContent: "center", alignItems: "center", color: f.match ? "#4ade80" : "#f87171" }}>
-                                    {f.match ? <CheckCircle style={{ width: 12, height: 12 }} /> : <X style={{ width: 12, height: 12 }} />}
-                                  </span>
-                                </div>
+                                <Fragment key={fi}>
+                                  {fi === 5 && (
+                                    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 0 4px" }}>
+                                      <div style={{ flex: 1, height: 1, background: darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)" }} />
+                                      <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: darkMode ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.28)", flexShrink: 0 }}>Secondary</span>
+                                      <div style={{ flex: 1, height: 1, background: darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)" }} />
+                                    </div>
+                                  )}
+                                  <div style={{ display: "grid", gridTemplateColumns: "96px 1fr 1fr 16px", gap: 6, alignItems: "flex-start", padding: "4px 0" }}>
+                                    <span style={{ fontSize: 11, color: darkMode ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.40)", fontWeight: 600, lineHeight: 1.3, wordBreak: "break-word" }}>{f.field}</span>
+                                    <span style={{ fontSize: 12, color: darkMode ? "rgba(255,255,255,0.70)" : "rgba(0,0,0,0.65)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.customer}</span>
+                                    <span style={{ fontSize: 12, color: darkMode ? "rgba(255,255,255,0.70)" : "rgba(0,0,0,0.65)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.watchlist}</span>
+                                    <span style={{ display: "flex", justifyContent: "center", alignItems: "center", color: f.match ? "#4ade80" : "#f87171", paddingTop: 2 }}>
+                                      {f.match ? <CheckCircle style={{ width: 12, height: 12 }} /> : <X style={{ width: 12, height: 12 }} />}
+                                    </span>
+                                  </div>
+                                </Fragment>
                               ))
                           }
                         </div>
@@ -2453,11 +3557,13 @@ export default function Dashboard() {
                       <AccordionContent style={{ paddingBottom: 10 }}>
                         <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                           {/* WorldCheck verified sources */}
-                          {[
-                            { label: "OFAC SDN List", date: "2024-11-03", excerpt: "Listed under Executive Order 13599 — Iranian government-related entity." },
-                            { label: "UN Security Council Consolidated List", date: "2023-07-18", excerpt: "Subject to travel ban and asset freeze per UNSC Resolution 1718." },
-                          ].map((src, i, arr) => (
-                            <div key={i} style={{ display: "flex", gap: 10, padding: "10px 0", borderBottom: `1px solid ${darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` }}>
+                          {(() => {
+                            const srcNodes = graphNodes.filter(n => n.nodeType === "attribute" && n.sublabel === "WorldCheck" && n.attrIcon === "source");
+                            return [
+                              { label: "OFAC SDN List", date: "2024-11-03", excerpt: "Listed under Executive Order 13599 — Iranian government-related entity." },
+                              { label: "UN Security Council Consolidated List", date: "2023-07-18", excerpt: "Subject to travel ban and asset freeze per UNSC Resolution 1718." },
+                            ].map((src, i, arr) => (
+                            <div key={i} onClick={() => { const n = srcNodes[i]; if (n) setActiveAttrLabel(n.label); }} style={{ display: "flex", gap: 10, padding: "10px 0", borderBottom: `1px solid ${darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}`, cursor: "pointer" }}>
                               <ShieldCheck style={{ width: 14, height: 14, flexShrink: 0, marginTop: 1, color: "#4ade80" }} />
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
@@ -2468,7 +3574,8 @@ export default function Dashboard() {
                                 <div style={{ fontSize: 10, color: darkMode ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.45)", lineHeight: 1.5 }}>{src.excerpt}</div>
                               </div>
                             </div>
-                          ))}
+                          ));
+                        })()}
                           {/* Web crawl adverse news — only shown after search triggered */}
                           {adverseSearchState === 'loading' && [0, 1].map(i => (
                             <div key={i} style={{ display: "flex", gap: 10, padding: "10px 0", borderBottom: i === 0 ? `1px solid ${darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` : "none" }}>
@@ -2483,7 +3590,7 @@ export default function Dashboard() {
                               </div>
                             </div>
                           ))}
-                          {adverseSearchState === 'complete' && ADVERSE_ARTICLES.slice(0, 2).map((art, i, arr) => (
+                          {adverseSearchState === 'complete' && ADVERSE_ARTICLES.map((art, i, arr) => (
                             <div key={i} onClick={() => { setAdverseArticleIdx(i); setAdverseDetail(art); setReviewState(s => ({ ...s, adverseNewsReviewed: true })); }} style={{ display: "flex", gap: 10, padding: i < arr.length - 1 ? "10px 0" : "10px 0 0", borderBottom: i < arr.length - 1 ? `1px solid ${darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` : "none", cursor: "pointer" }}>
                               <AlertTriangle style={{ width: 13, height: 13, flexShrink: 0, marginTop: 2, color: "#f59e0b" }} />
                               <div style={{ flex: 1, minWidth: 0 }}>
@@ -2763,7 +3870,7 @@ export default function Dashboard() {
                       if (dispositionChoice !== "false-positive" && comparisonNode) {
                         const cNodes = CASE_NODES[selectedCaseId as number] ?? [];
                         cNodes.forEach(n => {
-                          if (n.label !== comparisonNode.label && (n.risk === "critical" || n.risk === "high")) {
+                          if (n.label !== comparisonNode.label && n.nodeType !== "attribute") {
                             newForcedAuto.add(n.label);
                           }
                         });
@@ -2862,15 +3969,15 @@ export default function Dashboard() {
                   if (d === "true-hit-high")  return { label: "True Hit · High", color: "#f87171", bg: "rgba(248,113,113,0.12)" };
                   return { label: "True Hit · Med", color: "#fb923c", bg: "rgba(251,146,60,0.12)" };
                 };
-                const getMethodology = (n: typeof personNodes[0]) => {
+                const getMethodologyLines = (n: typeof personNodes[0]) => {
                   const fields = n.matchFields ?? [];
-                  const matched = fields.filter(f => f.match).map(f => `${f.field}: ${f.watchlist}`);
+                  const matched  = fields.filter(f => f.match).map(f => `${f.field}: ${f.watchlist}`);
                   const differed = fields.filter(f => !f.match).map(f => `${f.field}: customer '${f.customer}' vs watchlist '${f.watchlist}'`);
-                  const parts: string[] = [];
-                  if (matched.length)  parts.push(`PRIMARY MATCHED: ${matched.join(" | ")}`);
-                  if (differed.length) parts.push(`PRIMARY DIFFERED: ${differed.join(" | ")}`);
-                  if (!matched.length && !differed.length) parts.push("No identifier data available");
-                  return parts.join(". ");
+                  const lines: string[] = [];
+                  if (matched.length)  lines.push(`PRIMARY MATCHED: ${matched.join(" | ")}`);
+                  if (differed.length) lines.push(`PRIMARY DIFFERED: ${differed.join(" | ")}`);
+                  if (!lines.length)   lines.push("No identifier data available");
+                  return lines;
                 };
 
                 const borderColor = darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)";
@@ -2956,8 +4063,22 @@ export default function Dashboard() {
                                 }
                               </td>
                               {/* Methodology */}
-                              <td style={{ padding: "10px 12px", color: textDim, fontSize: 11 }}>
-                                <span style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{getMethodology(n)}</span>
+                              <td style={{ padding: "10px 12px", fontSize: 11 }}>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                  {getMethodologyLines(n).map((line, li) => {
+                                    const isMatched  = line.startsWith("PRIMARY MATCHED");
+                                    const isDiffered = line.startsWith("PRIMARY DIFFERED");
+                                    const labelEnd   = line.indexOf(":") + 1;
+                                    const label      = line.slice(0, labelEnd);
+                                    const body       = line.slice(labelEnd);
+                                    const labelColor = isMatched ? (darkMode ? "rgba(74,222,128,0.80)" : "rgb(22,163,74)") : isDiffered ? (darkMode ? "rgba(251,146,60,0.80)" : "rgb(194,65,12)") : textDim;
+                                    return (
+                                      <div key={li} style={{ color: textDim, lineHeight: 1.45 }}>
+                                        {label ? <><span style={{ fontWeight: 700, color: labelColor }}>{label}</span>{body}</> : line}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               </td>
                             </tr>
                           );
@@ -3065,11 +4186,11 @@ export default function Dashboard() {
                 {/* Stat cards */}
                 <div className="grid grid-cols-3 gap-3 w-full max-w-3xl items-stretch">
                   {([
-                    { icon:Users,         end:142, label:"Customers with watchlist matches", change:"↑ 18% from last week", up:true  },
-                    { icon:AlertTriangle, end:89,  label:"New matches detected",             change:"↑ 42% from last week", up:true  },
-                    { icon:FileText,      end:27,  label:"High-risk customers",              change:"↑ 35% from last week", up:true  },
-                  ] as const).map((s,i) => (
-                    <StatCard key={s.label} icon={s.icon} end={s.end} label={s.label} change={s.change} up={s.up} index={i} dark={darkMode} />
+                    { icon:Users,         end:142, label:"Customers with watchlist matches", change:"+22 since last week",  variant:"neutral" as const },
+                    { icon:AlertTriangle, end:89,  label:"New matches detected",             change:"+42% vs last week",    variant:"neutral" as const },
+                    { icon:FileText,      end:27,  label:"High-risk customers",              change:"↑ 6 this week",        variant:"alert"   as const },
+                  ]).map((s,i) => (
+                    <StatCard key={s.label} icon={s.icon} end={s.end} label={s.label} change={s.change} variant={s.variant} index={i} dark={darkMode} />
                   ))}
                 </div>
 

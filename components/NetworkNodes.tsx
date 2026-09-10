@@ -105,7 +105,7 @@ export default function NetworkNodes({ className = "", style, dark = true }: { c
         transparent: true,
         opacity: dark
           ? (size > 10 ? 1.0 : size > 7 ? 0.9 : 0.8)
-          : (size > 10 ? 0.7 : size > 7 ? 0.55 : 0.4),
+          : (size > 10 ? 0.85 : size > 7 ? 0.70 : 0.55),
         blending: dark ? THREE.AdditiveBlending : THREE.NormalBlending,
         depthWrite: false,
         sizeAttenuation: false,
@@ -136,10 +136,10 @@ export default function NetworkNodes({ className = "", style, dark = true }: { c
 
     // Dark: blue-white glowing lines with additive blend
     // Light: flat violet lines with normal blend and lower alpha
-    const lineR = dark ? 0.72 : 0.65;
-    const lineG = dark ? 0.82 : 0.55;
-    const lineB = dark ? 1.0  : 0.95;
-    const lineAlphaScale = dark ? 0.45 : 0.22;
+    const lineR = dark ? 0.72 : 0.42;
+    const lineG = dark ? 0.82 : 0.36;
+    const lineB = dark ? 1.0  : 0.88;
+    const lineAlphaScale = dark ? 0.45 : 0.38;
 
     const lnMat = new THREE.ShaderMaterial({
       transparent: true,
