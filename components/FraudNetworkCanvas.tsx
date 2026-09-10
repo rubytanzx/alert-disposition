@@ -13,6 +13,8 @@ export interface FraudNode {
   matchFields?: { field: string; customer: string; watchlist: string; match: boolean }[];
   matchedAttributeIndices?: number[];
   connectedTo?: number[];  // indices of other nodes this node connects to
+  isDisposed?:    boolean;  // disposition was explicitly submitted for this node
+  isForcedAuto?:  boolean;  // moved to ring 3 after a true-hit was submitted on another node
 }
 
 interface Props {
@@ -217,8 +219,8 @@ export default function FraudNetworkCanvas({
       const primaryR   = highR;
       const secondaryR = outerR;
 
-      const primaryIdx   = nodes.map((nd, i) => (nd.risk === "critical" || nd.risk === "high") ? i : -1).filter(i => i >= 0);
-      const secondaryIdx = nodes.map((nd, i) => (nd.risk === "medium"   || nd.risk === "low")  ? i : -1).filter(i => i >= 0);
+      const primaryIdx   = nodes.map((nd, i) => (nd.risk === "critical" || nd.risk === "high") && !nd.isForcedAuto ? i : -1).filter(i => i >= 0);
+      const secondaryIdx = nodes.map((nd, i) => (nd.risk === "medium"   || nd.risk === "low")  || !!nd.isForcedAuto ? i : -1).filter(i => i >= 0);
 
       const primAngles = getArcAngles(primaryIdx.length);
 
@@ -298,7 +300,7 @@ export default function FraudNetworkCanvas({
         : risk === "high"   ? "#f59e0b"
         : "#6b7280";
 
-      const isAutoDisposed = (risk: string) => risk === "medium" || risk === "low";
+      const isAutoDisposed = (nd: FraudNode) => nd.risk === "medium" || nd.risk === "low" || !!nd.isForcedAuto;
 
       // ── Ring circles (crit / high / disposed) ────────────────────────────────
       const { outerR, highR, critR } = getRings();
@@ -326,7 +328,7 @@ export default function FraudNetworkCanvas({
         if (lp <= 0) return;
         const node      = nodes[i];
         const isAttr    = node.nodeType === "attribute";
-        const auto      = isAutoDisposed(node.risk);
+        const auto      = isAutoDisposed(node);
         const isHovered = i === hovIdx;
 
         // Per-node match state (used for both line and node rendering)
@@ -334,10 +336,11 @@ export default function FraudNetworkCanvas({
           ? (selNode.matchedAttributeIndices ?? []).includes(i)
           : false;
 
-        // Line alpha: dim non-selected persons; dim non-matched attrs
+        // Line alpha: dim non-selected persons; dim non-matched attrs; very dim disposed
         let lineAlpha = 1;
         if (selNode && !isAttr && i !== selIdx) lineAlpha = 0.45;
         if (selNode && isAttr && !attrMatched)  lineAlpha = 0.45;
+        if (!isAttr && node.isDisposed) lineAlpha *= 0.30;
 
         const ex = cx + (p.x - cx) * lp;
         const ey = cy + (p.y - cy) * lp;
@@ -458,7 +461,7 @@ export default function FraudNetworkCanvas({
         if (np <= 0) return;
         const node   = nodes[i];
         const risk   = node.risk;
-        const auto   = isAutoDisposed(risk);
+        const auto   = isAutoDisposed(node);
         const isAttr = node.nodeType === "attribute";
 
         // Opacity: dim non-selected person nodes when a selection exists
@@ -468,6 +471,7 @@ export default function FraudNetworkCanvas({
           const matched = (selNode.matchedAttributeIndices ?? []).includes(i);
           if (!matched) nodeAlpha = np * 0.30;
         }
+        if (!isAttr && node.isDisposed) nodeAlpha *= 0.28;
         ctx.globalAlpha = nodeAlpha;
 
         if (isAttr) {
@@ -554,40 +558,60 @@ export default function FraudNetworkCanvas({
           const r        = 13;
           const isHov    = i === hovIdx;
 
-          // Extra dim for disposed nodes when not hovered
-          if (auto && !isHov) ctx.globalAlpha = nodeAlpha * (dark ? 0.65 : 0.45);
+          // Extra dim for auto-disposed nodes when not hovered
+          if (auto && !isHov && !node.isDisposed) ctx.globalAlpha = nodeAlpha * (dark ? 0.65 : 0.45);
 
-          if (!auto) {
-            const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 2.6);
-            glow.addColorStop(0, bColor + "30"); glow.addColorStop(1, bColor + "00");
-            ctx.beginPath(); ctx.arc(p.x, p.y, r * 2.6, 0, Math.PI * 2);
-            ctx.fillStyle = glow; ctx.fill();
-          }
-
-          if (i === selIdx) {
-            ctx.save();
-            ctx.shadowColor = bColor;
-            ctx.shadowBlur  = 20;
+          if (node.isDisposed) {
+            // Actual disposed: muted circle + checkmark, no glow or selection ring
             ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-            ctx.strokeStyle = bColor; ctx.lineWidth = 3; ctx.stroke();
-            ctx.restore();
+            ctx.fillStyle = dark ? "rgba(15,13,30,0.88)" : "rgba(248,247,255,0.92)";
+            ctx.fill();
+            ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+            ctx.strokeStyle = bColor + "40";
+            ctx.lineWidth = 1.2;
+            ctx.setLineDash([]);
+            ctx.stroke();
+            // Checkmark icon
+            ctx.strokeStyle = dark ? "rgba(255,255,255,0.55)" : "rgba(80,70,130,0.60)";
+            ctx.lineWidth = 1.8; ctx.lineCap = "round"; ctx.lineJoin = "round";
+            ctx.beginPath();
+            ctx.moveTo(p.x - 4, p.y + 0.5);
+            ctx.lineTo(p.x - 1, p.y + 3.5);
+            ctx.lineTo(p.x + 4.5, p.y - 3.5);
+            ctx.stroke();
+          } else {
+            if (!auto) {
+              const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 2.6);
+              glow.addColorStop(0, bColor + "30"); glow.addColorStop(1, bColor + "00");
+              ctx.beginPath(); ctx.arc(p.x, p.y, r * 2.6, 0, Math.PI * 2);
+              ctx.fillStyle = glow; ctx.fill();
+            }
+
+            if (i === selIdx) {
+              ctx.save();
+              ctx.shadowColor = bColor;
+              ctx.shadowBlur  = 20;
+              ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+              ctx.strokeStyle = bColor; ctx.lineWidth = 3; ctx.stroke();
+              ctx.restore();
+            }
+
+            ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+            ctx.fillStyle = dark ? "rgba(15,13,30,0.88)" : "rgba(248,247,255,0.92)";
+            ctx.fill();
+
+            ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+            ctx.strokeStyle = bColor;
+            ctx.lineWidth   = 2 + (i === selIdx ? 0.5 : 0);
+            ctx.stroke();
+
+            const iconColor = auto
+              ? (dark ? "rgba(156,163,175,0.70)" : "rgba(80,80,120,0.60)")
+              : (dark ? "rgba(255,255,255,0.88)"  : "rgba(80,70,130,0.85)");
+            ctx.fillStyle = iconColor;
+            ctx.beginPath(); ctx.arc(p.x, p.y - r * 0.22, r * 0.30, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(p.x, p.y + r * 0.65, r * 0.48, Math.PI, Math.PI * 2); ctx.fill();
           }
-
-          ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-          ctx.fillStyle = dark ? "rgba(15,13,30,0.88)" : "rgba(248,247,255,0.92)";
-          ctx.fill();
-
-          ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-          ctx.strokeStyle = bColor;
-          ctx.lineWidth   = 2 + (i === selIdx ? 0.5 : 0);
-          ctx.stroke();
-
-          const iconColor = auto
-            ? (dark ? "rgba(156,163,175,0.70)" : "rgba(80,80,120,0.60)")
-            : (dark ? "rgba(255,255,255,0.88)"  : "rgba(80,70,130,0.85)");
-          ctx.fillStyle = iconColor;
-          ctx.beginPath(); ctx.arc(p.x, p.y - r * 0.22, r * 0.30, 0, Math.PI * 2); ctx.fill();
-          ctx.beginPath(); ctx.arc(p.x, p.y + r * 0.65, r * 0.48, Math.PI, Math.PI * 2); ctx.fill();
 
           // Peripheral (disposed) labels: only render on hover; primary labels always visible
           const showLabel = !auto || isHov;
@@ -603,7 +627,9 @@ export default function FraudNetworkCanvas({
             ctx.font      = auto ? `${fontSize}px -apple-system,system-ui,sans-serif` : `600 ${fontSize}px -apple-system,system-ui,sans-serif`;
             ctx.fillStyle = auto
               ? (dark ? "rgba(156,163,175,0.80)" : "rgba(80,80,100,0.75)")
-              : (dark ? "rgba(255,255,255,0.88)" : "rgba(20,10,60,0.80)");
+              : node.isDisposed
+                ? (dark ? "rgba(255,255,255,0.45)" : "rgba(20,10,60,0.38)")
+                : (dark ? "rgba(255,255,255,0.88)" : "rgba(20,10,60,0.80)");
             ctx.textAlign    = "center";
             ctx.textBaseline = "alphabetic";
             ctx.fillText(node.label, p.x, ly);

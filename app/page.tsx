@@ -12,7 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useState, useEffect, useRef, useMemo, type ReactNode } from "react";
 import {
   AlertTriangle, ArrowLeft, ArrowRight, ArrowUp, Bell, Building2, Check, CheckCircle, ChevronDown, ChevronLeft, ChevronRight,
   ExternalLink, Eye, EyeOff, FileText, Flame, Globe, Inbox, Moon, PanelLeftClose, PanelLeftOpen, PanelRightClose, Pencil,
@@ -617,6 +617,8 @@ export default function Dashboard() {
   const [aiGuidanceStep, setAiGuidanceStep]   = useState<'overview'|'identity'|'sources'|'adverse-news'|'network'|'complete'>('overview');
   const [reviewState, setReviewState]         = useState({ identityReviewed: false, watchlistReviewed: false, adverseNewsReviewed: false, networkReviewed: false });
   const [accordionValue, setAccordionValue]   = useState<string[]>(["identifiers"]);
+  const [submittedNodes, setSubmittedNodes]   = useState<Map<string, "false-positive"|"true-hit-high"|"true-hit-medium">>(new Map());
+  const [forcedAutoDisposed, setForcedAutoDisposed] = useState<Set<string>>(new Set());
   const [pulseSection, setPulseSection]       = useState<string|null>(null);
   const [adverseSearchState, setAdverseSearchState] = useState<'idle'|'loading'|'complete'>('idle');
   const [searchOpen, setSearchOpen]           = useState(false);
@@ -674,6 +676,8 @@ export default function Dashboard() {
       setReviewState({ identityReviewed: false, watchlistReviewed: false, adverseNewsReviewed: false, networkReviewed: false });
       setAccordionValue(["identifiers"]);
       setPulseSection(null);
+      setSubmittedNodes(new Map());
+      setForcedAutoDisposed(new Set());
       setAdverseSearchState('idle');
       const caseNodes = CASE_NODES[selectedCaseId as number] ?? [];
       const defaultNode = caseNodes.find((n: FraudNode) => n.risk === "critical") ?? caseNodes.find((n: FraudNode) => n.risk === "high") ?? caseNodes[0] ?? null;
@@ -876,6 +880,12 @@ export default function Dashboard() {
   };
 
   const caseNodes    = selectedCase ? (CASE_NODES[selectedCase.id] ?? []) : [];
+  const displayNodes = useMemo(() => caseNodes.map(n => ({
+    ...n,
+    isDisposed:   submittedNodes.has(n.label),
+    isForcedAuto: forcedAutoDisposed.has(n.label),
+  })), [caseNodes, submittedNodes, forcedAutoDisposed]); // eslint-disable-line react-hooks/exhaustive-deps
+  const activeNodes  = caseNodes.filter(n => !submittedNodes.has(n.label));
   const critNodes    = caseNodes.filter(n => n.risk === "critical").length;
   const highNodes    = caseNodes.filter(n => n.risk === "high").length;
   const strongestNode = caseNodes.length > 0 ? caseNodes.reduce((b, n) => (n.matchScore ?? 0) > (b.matchScore ?? 0) ? n : b, caseNodes[0]) : null;
@@ -1558,26 +1568,33 @@ export default function Dashboard() {
               {networkVisible && <FraudNetworkCanvas
                 centerLabel={selectedCase.customerName}
                 centerSublabel={`${selectedCase.watchlistSource} · ${selectedCase.confidence}% match`}
-                nodes={caseNodes}
+                nodes={displayNodes}
                 dark={darkMode}
                 style={{ position:"absolute", inset:0 }}
                 selectedNodeLabel={comparisonNode?.label}
                 controlsRight={chatCollapsed ? RAIL_WIDTH + 8 : chatPanelWidth + 16}
                 onNodeClick={(node) => {
-                  const isDisposed = node.risk === "medium" || node.risk === "low";
+                  const isAutoDisp = node.risk === "medium" || node.risk === "low" || !!node.isForcedAuto;
                   setAdverseDetail(null);
                   setReviewState(s => ({ ...s, networkReviewed: true }));
                   setComparisonNode(prev => prev?.label === node.label ? null : node);
-                  if (isDisposed) {
-                    setDispositionChoice("false-positive");
-                    setTrueHitStep(false);
-                    setDispositionSubmitted(false);
-                    setDispositionComment(
-                      `Match score of ${node.matchScore ?? 0}% falls below the review threshold. ` +
-                      `Name similarity detected against ${node.sublabel ?? "the watchlist"}, however date of birth, ` +
-                      `nationality, and identity document number do not align with the customer's verified records. ` +
-                      `No beneficial ownership or transactional nexus identified. Assessed as a false positive — no further action required.`
-                    );
+                  if (!node.isDisposed) {
+                    if (isAutoDisp) {
+                      setDispositionChoice("false-positive");
+                      setTrueHitStep(false);
+                      setDispositionSubmitted(false);
+                      setDispositionComment(
+                        `Match score of ${node.matchScore ?? 0}% falls below the review threshold. ` +
+                        `Name similarity detected against ${node.sublabel ?? "the watchlist"}, however date of birth, ` +
+                        `nationality, and identity document number do not align with the customer's verified records. ` +
+                        `No beneficial ownership or transactional nexus identified. Assessed as a false positive — no further action required.`
+                      );
+                    } else {
+                      setDispositionChoice(null);
+                      setDispositionComment("");
+                      setDispositionSubmitted(false);
+                      setTrueHitStep(false);
+                    }
                   }
                 }}
               />}
@@ -1999,19 +2016,24 @@ export default function Dashboard() {
 
                 {/* ── Panel header — always visible ── */}
                 {(() => {
-                  const nodeIdx = comparisonNode ? caseNodes.findIndex(n => n.label === comparisonNode.label) : -1;
+                  const nodeIdx = comparisonNode ? activeNodes.findIndex(n => n.label === comparisonNode.label) : -1;
                   const canPrev = nodeIdx > 0;
-                  const canNext = nodeIdx >= 0 && nodeIdx < caseNodes.length - 1;
+                  const canNext = nodeIdx >= 0 && nodeIdx < activeNodes.length - 1;
                   const goTo = (idx: number) => {
-                    const n = caseNodes[idx];
+                    const n = activeNodes[idx];
                     if (!n) return;
                     setAdverseDetail(null);
                     setComparisonNode(n);
-                    if (n.risk === "medium" || n.risk === "low") {
+                    if (n.risk === "medium" || n.risk === "low" || forcedAutoDisposed.has(n.label)) {
                       setDispositionChoice("false-positive");
                       setTrueHitStep(false);
                       setDispositionSubmitted(false);
                       setDispositionComment(`Match score of ${n.matchScore ?? 0}% falls below the review threshold. Name similarity detected against ${n.sublabel ?? "the watchlist"}, however date of birth, nationality, and identity document number do not align with the customer's verified records. No beneficial ownership or transactional nexus identified. Assessed as a false positive — no further action required.`);
+                    } else {
+                      setDispositionChoice(null);
+                      setDispositionComment("");
+                      setDispositionSubmitted(false);
+                      setTrueHitStep(false);
                     }
                   };
                   return (
@@ -2040,7 +2062,7 @@ export default function Dashboard() {
                                 <ChevronLeft className="h-3 w-3" style={{ color: darkMode ? "rgba(255,255,255,0.70)" : "rgba(80,60,160,0.80)" }} />
                               </BorderBeamIconButton>
                               <span style={{ fontSize: 10, color: darkMode ? "rgba(255,255,255,0.30)" : "rgba(0,0,0,0.35)", minWidth: 28, textAlign: "center" }}>
-                                {nodeIdx + 1}/{caseNodes.length}
+                                {nodeIdx >= 0 ? `${nodeIdx + 1}/${activeNodes.length}` : `·/${activeNodes.length}`}
                               </span>
                               <BorderBeamIconButton
                                 type="button" variant="outline" beamSize="sm" colorVariant="colorful"
@@ -2532,6 +2554,45 @@ export default function Dashboard() {
                       setSubmittedComment(dispositionComment);
                       setDispositionSubmitted(true);
                       setIsChangingDisposition(false);
+
+                      // Track this node as actual disposed
+                      const newSubmittedMap = new Map(submittedNodes).set(comparisonNode!.label, dispositionChoice);
+                      setSubmittedNodes(newSubmittedMap);
+
+                      // If true hit: push all other critical/high nodes to ring 3
+                      const newForcedAuto = new Set(forcedAutoDisposed);
+                      if (dispositionChoice !== "false-positive" && comparisonNode) {
+                        const cNodes = CASE_NODES[selectedCaseId as number] ?? [];
+                        cNodes.forEach(n => {
+                          if (n.label !== comparisonNode.label && (n.risk === "critical" || n.risk === "high")) {
+                            newForcedAuto.add(n.label);
+                          }
+                        });
+                        if (newForcedAuto.size !== forcedAutoDisposed.size) setForcedAutoDisposed(newForcedAuto);
+                      }
+
+                      // Auto-advance to next active node after brief delay
+                      const cNodes = CASE_NODES[selectedCaseId as number] ?? [];
+                      const remaining = cNodes.filter(n => !newSubmittedMap.has(n.label));
+                      if (remaining.length > 0) {
+                        const next = remaining[0];
+                        setTimeout(() => {
+                          setAdverseDetail(null);
+                          setComparisonNode(next);
+                          const nextIsAuto = next.risk === "medium" || next.risk === "low" || newForcedAuto.has(next.label);
+                          if (nextIsAuto) {
+                            setDispositionChoice("false-positive");
+                            setTrueHitStep(false);
+                            setDispositionSubmitted(false);
+                            setDispositionComment(`Match score of ${next.matchScore ?? 0}% falls below the review threshold. Name similarity detected against ${next.sublabel ?? "the watchlist"}, however date of birth, nationality, and identity document number do not align with the customer's verified records. No beneficial ownership or transactional nexus identified. Assessed as a false positive — no further action required.`);
+                          } else {
+                            setDispositionChoice(null);
+                            setDispositionComment("");
+                            setDispositionSubmitted(false);
+                            setTrueHitStep(false);
+                          }
+                        }, 700);
+                      }
                     };
                     return (<>
                       <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
