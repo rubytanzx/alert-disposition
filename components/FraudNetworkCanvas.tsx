@@ -8,13 +8,15 @@ export interface FraudNode {
   sublabel?:    string;
   risk:         "critical" | "high" | "medium" | "low";
   nodeType?:    "attribute" | "person";
-  attrIcon?:    "name" | "dob" | "id" | "address" | "bank";
+  attrIcon?:    "name" | "dob" | "id" | "address" | "bank" | "news" | "source";
   matchScore?:  number;
   matchFields?: { field: string; customer: string; watchlist: string; match: boolean }[];
   matchedAttributeIndices?: number[];
-  connectedTo?: number[];  // indices of other nodes this node connects to
+  connectedTo?: number[];
   isDisposed?:    boolean;  // disposition was explicitly submitted for this node
+  isTrueHit?:     boolean;  // submitted as true-hit (stays at full opacity)
   isForcedAuto?:  boolean;  // moved to ring 3 after a true-hit was submitted on another node
+  isLoading?:     boolean;  // skeleton placeholder
 }
 
 interface Props {
@@ -92,10 +94,25 @@ function drawAttrIcon(ctx: CanvasRenderingContext2D, x: number, y: number, type:
       break;
     }
     case "bank": {
-      // Credit card
       roundRect(ctx, x - 5, y - 3.5, 10, 7, 1.5); ctx.stroke();
-      ctx.fillRect(x - 5, y - 0.8, 10, 2.2); // magnetic stripe
+      ctx.fillRect(x - 5, y - 0.8, 10, 2.2);
       ctx.fillRect(x - 3.5, y + 2, 2.5, 1);
+      break;
+    }
+    case "news": {
+      // Newspaper / article icon
+      roundRect(ctx, x - 5, y - 4, 10, 8.5, 1.2); ctx.stroke();
+      ctx.fillRect(x - 3.5, y - 2.5, 4, 1.2);
+      ctx.fillRect(x - 3.5, y + 0.2, 7, 1);
+      ctx.fillRect(x - 3.5, y + 2.2, 5.5, 1);
+      break;
+    }
+    case "source": {
+      // Chain-link / URL icon — two overlapping circles with gap
+      ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(x - 2.2, y, 3, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x + 2.2, y, 3, 0, Math.PI * 2); ctx.stroke();
+      ctx.clearRect(x - 0.8, y - 3.5, 1.6, 7);
       break;
     }
   }
@@ -118,41 +135,71 @@ export default function FraudNetworkCanvas({
   const zoomRef            = useRef(1);
   const panRef             = useRef({ x: 0, y: 0 });
   const dragRef            = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null);
+  const nodeDragRef        = useRef<{ nodeIdx: number; startCx: number; startCy: number } | null>(null);
+  const nodeOverridesRef   = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const hasDraggedRef      = useRef(false);
   const onNodeClickRef     = useRef(onNodeClick);
   onNodeClickRef.current   = onNodeClick;
   const posRef             = useRef<{ x: number; y: number }[]>([]);
   const prevPosRef         = useRef<{ x: number; y: number }[]>([]);
   const layoutTransRef     = useRef(1); // 0→1 ease for layout transitions
+  const prevNodeCountRef   = useRef(-1);
+  const prevCenterLabelRef = useRef("");
+  const revealRef          = useRef(1);
+  const nodesRef           = useRef<FraudNode[]>(nodes);
+  const attrOwnersRef      = useRef<Map<number, number>>(new Map());
+  const attrAllOwnersRef   = useRef<Map<number, number[]>>(new Map());
+  const hasAttrNodesRef    = useRef(false);
 
   const zoomIn    = () => { zoomRef.current = Math.min(6, zoomRef.current * 1.25);   drawRef.current(progRef.current); };
   const zoomOut   = () => { zoomRef.current = Math.max(0.2, zoomRef.current / 1.25); drawRef.current(progRef.current); };
   const resetView = () => { zoomRef.current = 1; panRef.current = { x: 0, y: 0 };    drawRef.current(progRef.current); };
 
-  // Sync selectedPersonRef whenever the externally-selected label changes
+  // Lightweight effect: updates nodesRef + ownership maps + handles case reset.
+  // Does NOT touch the canvas or RAF loop — those only re-run on centerLabel/dark change.
   useEffect(() => {
-    if (selectedNodeLabel) {
-      const idx = nodes.findIndex(n => n.label === selectedNodeLabel);
-      selectedPersonRef.current = idx >= 0 ? idx : -1;
-    } else {
-      selectedPersonRef.current = -1;
+    nodesRef.current = nodes;
+
+    const ao  = new Map<number, number>();
+    const aao = new Map<number, number[]>();
+    nodes.forEach((n, personIdx) => {
+      if (n.nodeType === "attribute") return;
+      (n.matchedAttributeIndices ?? []).forEach(attrIdx => {
+        if (!ao.has(attrIdx)) ao.set(attrIdx, personIdx);
+        if (!aao.has(attrIdx)) aao.set(attrIdx, []);
+        aao.get(attrIdx)!.push(personIdx);
+      });
+    });
+    attrOwnersRef.current    = ao;
+    attrAllOwnersRef.current = aao;
+    hasAttrNodesRef.current  = nodes.some(n => n.nodeType === "attribute");
+
+    const caseChanged = centerLabel !== prevCenterLabelRef.current;
+    prevCenterLabelRef.current = centerLabel;
+    prevNodeCountRef.current   = nodes.length;
+
+    if (caseChanged) {
+      prevPosRef.current     = [...posRef.current];
+      layoutTransRef.current = posRef.current.length > 0 ? 0 : 1;
+      progRef.current        = 0;
+      revealRef.current      = 1;
+      nodeOverridesRef.current.clear();
+      zoomRef.current        = 1;
+      panRef.current         = { x: 0, y: 0 };
+      timeRef.current        = 0;
+      hoveredIdxRef.current  = -1;
     }
-    drawRef.current(progRef.current);
-  }, [selectedNodeLabel]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    // Capture last-drawn positions so the transition can lerp from them
-    prevPosRef.current    = [...posRef.current];
-    layoutTransRef.current = posRef.current.length > 0 ? 0 : 1;
-
-    zoomRef.current       = 1;
-    panRef.current        = { x: 0, y: 0 };
-    hoveredIdxRef.current = -1;
     selectedPersonRef.current = -1;
     if (selectedNodeLabel) {
       const idx = nodes.findIndex(n => n.label === selectedNodeLabel);
       if (idx >= 0) selectedPersonRef.current = idx;
     }
-    timeRef.current       = 0;
+
+    drawRef.current(progRef.current);
+  }, [nodes, centerLabel, selectedNodeLabel]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
 
     const container = containerRef.current!;
     const canvas    = canvasRef.current!;
@@ -173,7 +220,7 @@ export default function FraudNetworkCanvas({
     // Shared ring radii — derived from container size, used by both getPositions & draw
     const getRings = () => {
       const outerR = Math.min(w * 0.38, h * 0.38);
-      return { outerR, highR: outerR * 0.60, critR: outerR * 0.31 };
+      return { outerR, highR: outerR * 0.60, critR: outerR * 0.31, ring4R: outerR * 1.28, newsR: outerR * 1.55 };
     };
 
     // Returns a set of angles for `count` nodes using a top-centred arc that
@@ -213,14 +260,17 @@ export default function FraudNetworkCanvas({
     };
 
     const getPositions = () => {
+      const nodes = nodesRef.current;
+      const attrOwners = attrOwnersRef.current;
       const cx = w * 0.50;
       const cy = h * 0.60;
-      const { outerR, highR } = getRings();
+      const { outerR, highR, ring4R, newsR } = getRings();
       const primaryR   = highR;
       const secondaryR = outerR;
 
-      const primaryIdx   = nodes.map((nd, i) => (nd.risk === "critical" || nd.risk === "high") && !nd.isForcedAuto ? i : -1).filter(i => i >= 0);
-      const secondaryIdx = nodes.map((nd, i) => (nd.risk === "medium"   || nd.risk === "low")  || !!nd.isForcedAuto ? i : -1).filter(i => i >= 0);
+      const attrIdx      = nodes.map((nd, i) => nd.nodeType === "attribute" ? i : -1).filter(i => i >= 0);
+      const primaryIdx   = nodes.map((nd, i) => (nd.risk === "critical" || nd.risk === "high") && !nd.isForcedAuto && nd.nodeType !== "attribute" ? i : -1).filter(i => i >= 0);
+      const secondaryIdx = nodes.map((nd, i) => ((nd.risk === "medium" || nd.risk === "low") || !!nd.isForcedAuto) && nd.nodeType !== "attribute" ? i : -1).filter(i => i >= 0);
 
       const primAngles = getArcAngles(primaryIdx.length);
 
@@ -257,6 +307,45 @@ export default function FraudNetworkCanvas({
         });
       }
 
+      // Identity attrs: bottom-half arc centred at 6 o'clock
+      const identityAttrIdx = attrIdx.filter(i => {
+        const icon = nodes[i].attrIcon;
+        return icon !== "source" && icon !== "news";
+      });
+      if (identityAttrIdx.length > 0) {
+        const attrR     = outerR * 0.78;
+        const spread    = Math.PI * 0.72;
+        const attrStart = Math.PI / 2 - spread / 2;
+        identityAttrIdx.forEach((nodeIdx, k) => {
+          const t2 = identityAttrIdx.length === 1 ? 0.5 : k / (identityAttrIdx.length - 1);
+          const a  = attrStart + t2 * spread;
+          finalPos[nodeIdx] = { x: cx + Math.cos(a) * attrR, y: cy + Math.sin(a) * attrR };
+        });
+      }
+
+      // Source/news attrs: fanned around their owner person node
+      const placeOuterGroup = (indices: number[], r: number) => {
+        if (indices.length === 0) return;
+        const byOwner = new Map<number, number[]>();
+        indices.forEach(nodeIdx => {
+          const ownerIdx = attrOwners.get(nodeIdx) ?? -1;
+          if (!byOwner.has(ownerIdx)) byOwner.set(ownerIdx, []);
+          byOwner.get(ownerIdx)!.push(nodeIdx);
+        });
+        byOwner.forEach((nodeIndices, ownerIdx) => {
+          const ownerPos  = ownerIdx >= 0 ? finalPos[ownerIdx] : null;
+          const baseAngle = ownerPos ? Math.atan2(ownerPos.y - cy, ownerPos.x - cx) : -(Math.PI / 2);
+          const count     = nodeIndices.length;
+          const fanSpread = count <= 1 ? 0 : Math.min(Math.PI * 0.42, count * 0.22);
+          nodeIndices.forEach((nodeIdx, k) => {
+            const offset = count <= 1 ? 0 : -fanSpread / 2 + k * fanSpread / (count - 1);
+            finalPos[nodeIdx] = { x: cx + Math.cos(baseAngle + offset) * r, y: cy + Math.sin(baseAngle + offset) * r };
+          });
+        });
+      };
+      placeOuterGroup(attrIdx.filter(i => nodes[i].attrIcon === "source"), ring4R);
+      placeOuterGroup(attrIdx.filter(i => nodes[i].attrIcon === "news"),   newsR);
+
       // Smooth transition from previous layout (ease-in-out quad)
       const t    = layoutTransRef.current;
       const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
@@ -272,11 +361,15 @@ export default function FraudNetworkCanvas({
       });
     };
 
-    const hasAttrNodes = nodes.some(n => n.nodeType === "attribute");
+    const hasAttrNodes = hasAttrNodesRef.current;
 
     const draw = (prog: number) => {
+      const nodes        = nodesRef.current;
+      const attrOwners    = attrOwnersRef.current;
+      const attrAllOwners = attrAllOwnersRef.current;
       const ctx    = canvas.getContext("2d")!;
       const time   = timeRef.current;
+      const reveal = revealRef.current;  // 0→1 during skeleton→real transition
       const hovIdx = hoveredIdxRef.current;
       const selIdx = selectedPersonRef.current;
       const selNode = selIdx >= 0 ? nodes[selIdx] : null;
@@ -293,6 +386,8 @@ export default function FraudNetworkCanvas({
       const cx = w * 0.50;
       const cy = h * 0.60;
       const pos = getPositions();
+      // Apply user-dragged overrides
+      nodeOverridesRef.current.forEach((op, idx) => { if (pos[idx]) pos[idx] = op; });
       posRef.current = pos;
 
       const riskColor = (risk: string) =>
@@ -302,14 +397,17 @@ export default function FraudNetworkCanvas({
 
       const isAutoDisposed = (nd: FraudNode) => nd.risk === "medium" || nd.risk === "low" || !!nd.isForcedAuto;
 
-      // ── Ring circles (crit / high / disposed) ────────────────────────────────
-      const { outerR, highR, critR } = getRings();
-      const ringFade = Math.max(0, Math.min(1, (prog - 0.2) / 0.4));
+      // ── Ring circles ─────────────────────────────────────────────────────────
+      const { outerR, highR, critR, ring4R, newsR } = getRings();
+      const allLoading = nodes.length > 0 && nodes.every(nd => nd.isLoading);
+      const ringFade = allLoading ? 0 : Math.max(0, Math.min(1, (prog - 0.2) / 0.4)) * reveal;
       if (ringFade > 0) {
         const rings = [
           { r: critR,  color: "#ef4444" },
           { r: highR,  color: "#f59e0b" },
           { r: outerR, color: "#6b7280" },
+          { r: ring4R, color: "#4ade80" },
+          { r: newsR,  color: "#fb923c" },
         ];
         rings.forEach(({ r, color }) => {
           ctx.save();
@@ -327,35 +425,88 @@ export default function FraudNetworkCanvas({
         const lp = Math.max(0, Math.min(1, prog * 1.6 - (i / n) * 0.5));
         if (lp <= 0) return;
         const node      = nodes[i];
+        if (node.isLoading) return; // no lines during skeleton loading state
+        const rlp = lp * reveal;   // revealed lp — drives line endpoint + alpha during reveal
         const isAttr    = node.nodeType === "attribute";
+        const isOuterAttr   = isAttr && (node.attrIcon === "source" || node.attrIcon === "news");
+        const outerOwnerIdx = isOuterAttr ? attrOwners.get(i) : undefined;
+        const outerOwnerDisposed = outerOwnerIdx !== undefined
+          ? ((nodes[outerOwnerIdx]?.isDisposed && !nodes[outerOwnerIdx]?.isTrueHit) ?? false)
+          : false;
         const auto      = isAutoDisposed(node);
         const isHovered = i === hovIdx;
 
         // Per-node match state (used for both line and node rendering)
-        const attrMatched = isAttr && selNode
+        const attrMatched = isAttr && selNode && !outerOwnerDisposed
           ? (selNode.matchedAttributeIndices ?? []).includes(i)
           : false;
 
-        // Line alpha: dim non-selected persons; dim non-matched attrs; very dim disposed
+        // Line alpha — forced-auto nodes keep their lines visible regardless of selection
         let lineAlpha = 1;
-        if (selNode && !isAttr && i !== selIdx) lineAlpha = 0.45;
+        if (selNode && !isAttr && i !== selIdx && !node.isForcedAuto) lineAlpha = 0.45;
         if (selNode && isAttr && !attrMatched)  lineAlpha = 0.45;
-        if (!isAttr && node.isDisposed) lineAlpha *= 0.30;
-
-        const ex = cx + (p.x - cx) * lp;
-        const ey = cy + (p.y - cy) * lp;
+        if (!isAttr && node.isDisposed && !node.isTrueHit) lineAlpha *= 0.30;
+        if (isOuterAttr && outerOwnerDisposed)  lineAlpha = 0.10;
 
         ctx.save();
-        ctx.globalAlpha = lp * lineAlpha;
 
-        if (isAttr) {
-          // ── Attribute lines: always solid, neutral indigo ──
+        if (isAttr && isOuterAttr) {
+          // ── Outer attr lines: draw from each owner person position ──
+          const owners = attrAllOwners.get(i) ?? [];
+          const drawFrom = owners.length > 0 ? owners : (outerOwnerIdx !== undefined ? [outerOwnerIdx] : []);
+          drawFrom.forEach(ownerIdx => {
+            const ownerPos = pos[ownerIdx];
+            if (!ownerPos) return;
+            const ownerLP = Math.max(0, Math.min(1, prog * 1.6 - (ownerIdx / n) * 0.5)) * reveal;
+            const ex2 = ownerPos.x + (p.x - ownerPos.x) * rlp;
+            const ey2 = ownerPos.y + (p.y - ownerPos.y) * rlp;
+            const outerTint = node.attrIcon === "source" ? "#4ade80" : "#fb923c";
+            ctx.globalAlpha = Math.min(rlp, ownerLP) * lineAlpha;
+            ctx.setLineDash([]);
+            ctx.strokeStyle = dark ? outerTint + "66" : outerTint + "77";
+            ctx.lineWidth   = 1.0;
+            ctx.beginPath(); ctx.moveTo(ownerPos.x, ownerPos.y); ctx.lineTo(ex2, ey2); ctx.stroke();
+          });
+
+          // Beam from selected person to this outer attr
+          if (attrMatched && lp >= 1 && selIdx >= 0) {
+            const selPos = pos[selIdx];
+            if (selPos) {
+              const bColor  = riskColor(selNode!.risk);
+              const beamT   = (time * 0.55) % 1;
+              const halfLen = 0.22;
+              const t0 = Math.max(0, beamT - halfLen);
+              const t1 = Math.min(1, beamT + halfLen);
+              const bx0 = selPos.x + (p.x - selPos.x) * t0, by0 = selPos.y + (p.y - selPos.y) * t0;
+              const bx1 = selPos.x + (p.x - selPos.x) * t1, by1 = selPos.y + (p.y - selPos.y) * t1;
+              const bhx = selPos.x + (p.x - selPos.x) * Math.min(1, beamT + halfLen * 0.6);
+              const bhy = selPos.y + (p.y - selPos.y) * Math.min(1, beamT + halfLen * 0.6);
+              const beamGrad = ctx.createLinearGradient(bx0, by0, bx1, by1);
+              beamGrad.addColorStop(0,   bColor + "00");
+              beamGrad.addColorStop(0.4, bColor + "bb");
+              beamGrad.addColorStop(0.7, bColor + "ff");
+              beamGrad.addColorStop(1,   bColor + "44");
+              ctx.globalAlpha = 1;
+              ctx.lineWidth = 2; ctx.strokeStyle = beamGrad;
+              ctx.beginPath(); ctx.moveTo(bx0, by0); ctx.lineTo(bx1, by1); ctx.stroke();
+              ctx.beginPath(); ctx.arc(bhx, bhy, 2.2, 0, Math.PI * 2);
+              ctx.fillStyle = bColor + "dd"; ctx.fill();
+              const dotGlow = ctx.createRadialGradient(bhx, bhy, 0, bhx, bhy, 7);
+              dotGlow.addColorStop(0, bColor + "55"); dotGlow.addColorStop(1, bColor + "00");
+              ctx.beginPath(); ctx.arc(bhx, bhy, 7, 0, Math.PI * 2);
+              ctx.fillStyle = dotGlow; ctx.fill();
+            }
+          }
+        } else if (isAttr) {
+          // ── Identity attr lines: from center ──
+          const ex = cx + (p.x - cx) * rlp;
+          const ey = cy + (p.y - cy) * rlp;
+          ctx.globalAlpha = rlp * lineAlpha;
           ctx.setLineDash([]);
           ctx.strokeStyle = dark ? "rgba(99,102,241,0.75)" : "rgba(99,102,241,0.80)";
           ctx.lineWidth   = 1.2;
           ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
 
-          // Beam overlay when this attribute is matched to the selected person
           if (attrMatched && lp >= 1) {
             const bColor  = riskColor(selNode!.risk);
             const beamT   = (time * 0.55) % 1;
@@ -381,8 +532,19 @@ export default function FraudNetworkCanvas({
             ctx.beginPath(); ctx.arc(bhx, bhy, 7, 0, Math.PI * 2);
             ctx.fillStyle = dotGlow; ctx.fill();
           }
+        } else if (!isAttr && node.isLoading) {
+          // ── Skeleton person: faint pulsing dashed spoke ──
+          const ex = cx + (p.x - cx) * lp, ey = cy + (p.y - cy) * lp;
+          const sk = (Math.sin(timeRef.current * 2.4 + i * 0.7) + 1) / 2;
+          ctx.globalAlpha = lp * (0.12 + sk * 0.14);
+          ctx.setLineDash([3, 7]);
+          ctx.strokeStyle = dark ? "rgba(129,140,248,0.90)" : "rgba(99,102,241,0.70)";
+          ctx.lineWidth = 0.8;
+          ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
         } else if (!isAttr && auto) {
           // ── Auto-disposed person: faint dotted spoke ──
+          const ex = cx + (p.x - cx) * rlp, ey = cy + (p.y - cy) * rlp;
+          ctx.globalAlpha = rlp * lineAlpha;
           ctx.setLineDash(isHovered ? [4, 5] : [3, 6]);
           ctx.lineDashOffset = isHovered ? -(time * 18) : 0;
           ctx.strokeStyle = isHovered
@@ -392,6 +554,8 @@ export default function FraudNetworkCanvas({
           ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
         } else {
           // ── Critical / high: very faint solid spoke, risk-tinted ──
+          const ex = cx + (p.x - cx) * rlp, ey = cy + (p.y - cy) * rlp;
+          ctx.globalAlpha = rlp * lineAlpha;
           const sColor = riskColor(node.risk);
           const isActive = isHovered || i === selIdx;
           ctx.setLineDash([]);
@@ -433,7 +597,8 @@ export default function FraudNetworkCanvas({
 
       // ── Inter-node edges (connectedTo network) ───────────────────────────────
       const edgeFade = Math.max(0, Math.min(1, (prog - 0.55) / 0.25));
-      if (edgeFade > 0) {
+      const anyLoading = nodes.some(nd => nd.isLoading);
+      if (edgeFade > 0 && !anyLoading) {
         const drawn = new Set<string>();
         pos.forEach((p, i) => {
           (nodes[i].connectedTo ?? []).forEach(j => {
@@ -464,17 +629,41 @@ export default function FraudNetworkCanvas({
         const auto   = isAutoDisposed(node);
         const isAttr = node.nodeType === "attribute";
 
+        const isOuterAttrN    = isAttr && (node.attrIcon === "source" || node.attrIcon === "news");
+        const outerOwnerIdxN  = isOuterAttrN ? attrOwners.get(i) : undefined;
+        const outerOwnerDisposedN = outerOwnerIdxN !== undefined
+          ? ((nodes[outerOwnerIdxN]?.isDisposed && !nodes[outerOwnerIdxN]?.isTrueHit) ?? false)
+          : false;
+
         // Opacity: dim non-selected person nodes when a selection exists
         let nodeAlpha = np;
-        if (selNode && !isAttr && i !== selIdx) nodeAlpha = np * 0.50;
+        // Forced-auto nodes stay visible regardless of selection — don't apply selection dimming
+        if (selNode && !isAttr && i !== selIdx && !node.isForcedAuto) nodeAlpha = np * 0.50;
         if (selNode && isAttr) {
           const matched = (selNode.matchedAttributeIndices ?? []).includes(i);
           if (!matched) nodeAlpha = np * 0.30;
         }
-        if (!isAttr && node.isDisposed) nodeAlpha *= 0.55;
+        if (!isAttr && node.isDisposed && !node.isTrueHit) nodeAlpha *= 0.55;
+        if (isOuterAttrN && outerOwnerDisposedN) nodeAlpha = np * 0.15;
         ctx.globalAlpha = nodeAlpha;
 
-        if (isAttr) {
+        if (isAttr && node.isLoading) {
+          // ── Skeleton placeholder attr node ───────────────────────────────────
+          const pillW = 100, hh = 16, cr = 9;
+          const x0 = p.x - pillW / 2, y0 = p.y - hh;
+          const shimmer = (Math.sin(time * 2.4 + i * 1.1) + 1) / 2;
+          roundRect(ctx, x0, y0, pillW, hh * 2, cr);
+          const grad = ctx.createLinearGradient(x0, 0, x0 + pillW, 0);
+          const lo = dark ? "rgba(129,140,248,0.07)" : "rgba(129,140,248,0.05)";
+          const hi = dark ? "rgba(192,132,252,0.20)" : "rgba(192,132,252,0.13)";
+          grad.addColorStop(Math.max(0, shimmer - 0.35), lo);
+          grad.addColorStop(shimmer, hi);
+          grad.addColorStop(Math.min(1, shimmer + 0.35), lo);
+          ctx.fillStyle = grad; ctx.fill();
+          roundRect(ctx, x0, y0, pillW, hh * 2, cr);
+          ctx.strokeStyle = dark ? "rgba(99,102,241,0.16)" : "rgba(99,102,241,0.10)";
+          ctx.lineWidth = 1; ctx.stroke();
+        } else if (isAttr) {
           // ── Redesigned attribute node (dynamic width) ────────────────────────
           const iconKey = node.attrIcon ?? "id";
 
@@ -500,6 +689,8 @@ export default function FraudNetworkCanvas({
             id:      "#60a5fa",
             address: "#2dd4bf",
             bank:    "#fbbf24",
+            news:    "#fb923c",
+            source:  "#4ade80",
           };
           const baseTint   = iconTints[iconKey] ?? "#818cf8";
           const activeTint = glowC ?? baseTint;
@@ -552,6 +743,27 @@ export default function FraudNetworkCanvas({
           ctx.fillStyle = dark ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.40)";
           if (node.sublabel) ctx.fillText(node.sublabel, textX, p.y + 7);
 
+        } else if (node.isLoading) {
+          // ── Skeleton person node: pulsing indigo ghost circle ────────────────
+          const r  = 13;
+          const sk = (Math.sin(time * 2.2 + i * 1.1) + 1) / 2;
+          // Outer glow ring
+          ctx.globalAlpha = nodeAlpha * (0.08 + sk * 0.12);
+          ctx.beginPath(); ctx.arc(p.x, p.y, r * 2.2, 0, Math.PI * 2);
+          ctx.fillStyle = dark ? "rgba(129,140,248,1)" : "rgba(99,102,241,1)";
+          ctx.fill();
+          // Circle fill
+          ctx.globalAlpha = nodeAlpha * (0.06 + sk * 0.10);
+          ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+          ctx.fillStyle = dark ? "rgba(129,140,248,1)" : "rgba(99,102,241,1)";
+          ctx.fill();
+          // Circle border shimmer
+          ctx.globalAlpha = nodeAlpha * (0.18 + sk * 0.30);
+          ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+          ctx.strokeStyle = dark ? "rgba(129,140,248,1)" : "rgba(99,102,241,1)";
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([]);
+          ctx.stroke();
         } else {
           // ── Person node ──────────────────────────────────────────────────────
           // Force-auto nodes (pushed to ring 3 after a true-hit) use grey regardless of original risk
@@ -559,11 +771,13 @@ export default function FraudNetworkCanvas({
           const r        = 13;
           const isHov    = i === hovIdx;
 
-          // Extra dim for auto-disposed nodes when not hovered
-          if (auto && !isHov && !node.isDisposed) ctx.globalAlpha = nodeAlpha * (dark ? 0.65 : 0.45);
+          // Forced-auto nodes stay at reasonable visibility; organic auto (med/low) dims more
+          if (auto && !isHov && !node.isDisposed) {
+            ctx.globalAlpha = nodeAlpha * (node.isForcedAuto ? 0.88 : (dark ? 0.65 : 0.45));
+          }
 
-          if (node.isDisposed) {
-            // Actual disposed: muted circle + checkmark, no glow or selection ring
+          if (node.isDisposed && !node.isTrueHit) {
+            // Actual disposed (non-true-hit): muted circle + checkmark, no glow or selection ring
             ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
             ctx.fillStyle = dark ? "rgba(15,13,30,0.88)" : "rgba(248,247,255,0.92)";
             ctx.fill();
@@ -628,7 +842,7 @@ export default function FraudNetworkCanvas({
             ctx.font      = auto ? `${fontSize}px -apple-system,system-ui,sans-serif` : `600 ${fontSize}px -apple-system,system-ui,sans-serif`;
             ctx.fillStyle = auto
               ? (dark ? "rgba(156,163,175,0.80)" : "rgba(80,80,100,0.75)")
-              : node.isDisposed
+              : (node.isDisposed && !node.isTrueHit)
                 ? (dark ? "rgba(255,255,255,0.45)" : "rgba(20,10,60,0.38)")
                 : (dark ? "rgba(255,255,255,0.88)" : "rgba(20,10,60,0.80)");
             ctx.textAlign    = "center";
@@ -687,7 +901,8 @@ export default function FraudNetworkCanvas({
 
     const animate = () => {
       if (progRef.current < 1)        progRef.current    = Math.min(1, progRef.current    + 0.016);
-      if (layoutTransRef.current < 1) layoutTransRef.current = Math.min(1, layoutTransRef.current + 0.022); // ~45 frames ≈ 0.75 s
+      if (layoutTransRef.current < 1) layoutTransRef.current = Math.min(1, layoutTransRef.current + 0.022);
+      if (revealRef.current < 1)      revealRef.current  = Math.min(1, revealRef.current  + 0.020); // ~50 frames ≈ 0.8s
       timeRef.current += 0.016;
       draw(progRef.current);
       rafRef.current = requestAnimationFrame(animate);
@@ -708,25 +923,55 @@ export default function FraudNetworkCanvas({
       zoomRef.current = nz;
     };
 
+    const toCanvas = (clientX: number, clientY: number) => {
+      const rect = container.getBoundingClientRect();
+      const mx   = clientX - rect.left;
+      const my   = clientY - rect.top;
+      return {
+        x: (mx - w / 2 - panRef.current.x) / zoomRef.current + w / 2,
+        y: (my - h / 2 - panRef.current.y) / zoomRef.current + h / 2,
+      };
+    };
+
+    const hitNode = (cx: number, cy: number, radius = 28) => {
+      let idx = -1, best = radius;
+      posRef.current.forEach((p, i) => {
+        const d = Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2);
+        if (d < best) { idx = i; best = d; }
+      });
+      return idx;
+    };
+
     const onMouseDown = (e: MouseEvent) => {
       if (e.button !== 0) return;
-      dragRef.current = { sx: e.clientX, sy: e.clientY, px: panRef.current.x, py: panRef.current.y };
+      hasDraggedRef.current = false;
+      const { x: cx, y: cy } = toCanvas(e.clientX, e.clientY);
+      const nodeIdx = hitNode(cx, cy, 24);
+      if (nodeIdx >= 0) {
+        nodeDragRef.current = { nodeIdx, startCx: cx, startCy: cy };
+      } else {
+        dragRef.current = { sx: e.clientX, sy: e.clientY, px: panRef.current.x, py: panRef.current.y };
+      }
       container.style.cursor = "grabbing";
     };
 
     const onMouseMove = (e: MouseEvent) => {
+      if (nodeDragRef.current) {
+        const { x: cx, y: cy } = toCanvas(e.clientX, e.clientY);
+        const { nodeIdx } = nodeDragRef.current;
+        nodeOverridesRef.current.set(nodeIdx, { x: cx, y: cy });
+        hasDraggedRef.current = true;
+        return;
+      }
       if (dragRef.current) {
         panRef.current = {
           x: dragRef.current.px + e.clientX - dragRef.current.sx,
           y: dragRef.current.py + e.clientY - dragRef.current.sy,
         };
+        hasDraggedRef.current = true;
         return;
       }
-      const rect    = container.getBoundingClientRect();
-      const mx      = e.clientX - rect.left;
-      const my      = e.clientY - rect.top;
-      const canvasX = (mx - w / 2 - panRef.current.x) / zoomRef.current + w / 2;
-      const canvasY = (my - h / 2 - panRef.current.y) / zoomRef.current + h / 2;
+      const { x: canvasX, y: canvasY } = toCanvas(e.clientX, e.clientY);
       let newHover = -1, hitDist = 28;
       posRef.current.forEach((p, i) => {
         const d = Math.sqrt((p.x - canvasX) ** 2 + (p.y - canvasY) ** 2);
@@ -734,12 +979,13 @@ export default function FraudNetworkCanvas({
       });
       if (newHover !== hoveredIdxRef.current) {
         hoveredIdxRef.current = newHover;
-        const isClickable = newHover >= 0 && (onNodeClickRef.current || (hasAttrNodes && nodes[newHover]?.nodeType !== "attribute"));
+        const isClickable = newHover >= 0 && (onNodeClickRef.current || (hasAttrNodes && nodesRef.current[newHover]?.nodeType !== "attribute"));
         container.style.cursor = isClickable ? "pointer" : "grab";
       }
     };
 
     const onMouseUp = () => {
+      nodeDragRef.current = null;
       dragRef.current = null;
       container.style.cursor = "grab";
     };
@@ -747,32 +993,22 @@ export default function FraudNetworkCanvas({
     const onMouseLeave = () => { hoveredIdxRef.current = -1; };
 
     const onClick = (e: MouseEvent) => {
-      const rect    = container.getBoundingClientRect();
-      const mx      = e.clientX - rect.left;
-      const my      = e.clientY - rect.top;
-      const canvasX = (mx - w / 2 - panRef.current.x) / zoomRef.current + w / 2;
-      const canvasY = (my - h / 2 - panRef.current.y) / zoomRef.current + h / 2;
-      let hitIdx = -1, hitDist = 24;
-      posRef.current.forEach((p, i) => {
-        const d = Math.sqrt((p.x - canvasX) ** 2 + (p.y - canvasY) ** 2);
-        if (d < hitDist) { hitIdx = i; hitDist = d; }
-      });
-      const hit: FraudNode | null = hitIdx >= 0 ? nodes[hitIdx] : null;
+      if (hasDraggedRef.current) { hasDraggedRef.current = false; return; }
+      const { x: canvasX, y: canvasY } = toCanvas(e.clientX, e.clientY);
+      const hitIdx = hitNode(canvasX, canvasY, 24);
+      const hit: FraudNode | null = hitIdx >= 0 ? nodesRef.current[hitIdx] : null;
 
       if (hit) {
-        // Internal person selection for attr-glow (only when attr nodes are present)
-        if (hasAttrNodes && nodes[hitIdx]?.nodeType !== "attribute") {
+        if (hasAttrNodes && nodesRef.current[hitIdx]?.nodeType !== "attribute") {
           selectedPersonRef.current = selectedPersonRef.current === hitIdx ? -1 : hitIdx;
         }
         if (onNodeClickRef.current) onNodeClickRef.current(hit);
       } else {
-        // Click on empty area → clear internal selection
         if (hasAttrNodes) selectedPersonRef.current = -1;
       }
     };
 
     resize();
-    progRef.current = 0;
     cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(animate);
 
@@ -796,7 +1032,7 @@ export default function FraudNetworkCanvas({
       window.removeEventListener("mousemove",     onMouseMove);
       window.removeEventListener("mouseup",       onMouseUp);
     };
-  }, [nodes, centerLabel, centerSublabel, dark]);
+  }, [centerLabel, centerSublabel, dark]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const btnBase: React.CSSProperties = {
     width: 32, height: 32, borderRadius: 8,
