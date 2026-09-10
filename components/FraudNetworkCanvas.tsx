@@ -463,7 +463,7 @@ export default function FraudNetworkCanvas({
 
         // Opacity: dim non-selected person nodes when a selection exists
         let nodeAlpha = np;
-        if (selNode && !isAttr && i !== selIdx) nodeAlpha = np * 0.75;
+        if (selNode && !isAttr && i !== selIdx) nodeAlpha = np * 0.50;
         if (selNode && isAttr) {
           const matched = (selNode.matchedAttributeIndices ?? []).includes(i);
           if (!matched) nodeAlpha = np * 0.30;
