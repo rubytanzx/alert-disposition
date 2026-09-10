@@ -471,7 +471,7 @@ export default function FraudNetworkCanvas({
           const matched = (selNode.matchedAttributeIndices ?? []).includes(i);
           if (!matched) nodeAlpha = np * 0.30;
         }
-        if (!isAttr && node.isDisposed) nodeAlpha *= 0.28;
+        if (!isAttr && node.isDisposed) nodeAlpha *= 0.55;
         ctx.globalAlpha = nodeAlpha;
 
         if (isAttr) {
@@ -554,7 +554,8 @@ export default function FraudNetworkCanvas({
 
         } else {
           // ── Person node ──────────────────────────────────────────────────────
-          const bColor   = riskColor(risk);
+          // Force-auto nodes (pushed to ring 3 after a true-hit) use grey regardless of original risk
+          const bColor   = node.isForcedAuto ? "#6b7280" : riskColor(risk);
           const r        = 13;
           const isHov    = i === hovIdx;
 
