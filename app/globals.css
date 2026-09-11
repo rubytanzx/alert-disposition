@@ -218,6 +218,16 @@
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
+/* Windows 125% DPI scaling (ThinkPads etc.) — scale back to match Mac rendering.
+   Targets devicePixelRatio 1.1–1.49×, which is 125% Windows scaling on common
+   1080p/1440p screens. Mac Retina (2×) and 1:1 screens are unaffected.
+   pointer:fine excludes touch devices. */
+@media screen and (min-resolution: 1.1dppx) and (max-resolution: 1.49dppx) and (pointer: fine) {
+  html {
+    zoom: 0.85;
+  }
+}
+
 @keyframes skeleton-shimmer {
   0%   { background-position: -200% 0; }
   100% { background-position: 200% 0; }
