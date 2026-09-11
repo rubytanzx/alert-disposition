@@ -4725,7 +4725,10 @@ export default function Dashboard() {
                 </div>
 
                 {/* Prompt bar */}
-                <div className="w-full max-w-xl">
+                <div className="w-full max-w-xl flex flex-col gap-3">
+                  <p style={{ textAlign: "center", fontSize: 13, fontWeight: 500, color: darkMode ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.45)", margin: 0 }}>
+                    What would you like to do?
+                  </p>
                   <div style={{
                     borderRadius: "9999px",
                     padding: "1.5px",
@@ -4761,6 +4764,61 @@ export default function Dashboard() {
                         <ArrowUp className="h-3.5 w-3.5" />
                       </button>
                     </div>
+                  </div>
+                  {/* Predefined action chips */}
+                  <div style={{ display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
+                    {([
+                      {
+                        label: "Review next case",
+                        icon: <ArrowRight style={{ width: 11, height: 11 }} />,
+                        action: () => {
+                          const next = cases.find(c => c.unread) ?? cases[0];
+                          setSelectedCaseId(next.id);
+                        },
+                      },
+                      {
+                        label: "Show highest-risk case",
+                        icon: <AlertTriangle style={{ width: 11, height: 11 }} />,
+                        action: () => {
+                          const top = cases.reduce((max, c) => c.confidence > max.confidence ? c : max);
+                          setSelectedCaseId(top.id);
+                        },
+                      },
+                      {
+                        label: "Summarise pending cases",
+                        icon: <FileText style={{ width: 11, height: 11 }} />,
+                        action: () => {
+                          setSelectedCaseId(cases[0].id);
+                          setChatInput("Summarise pending cases");
+                        },
+                      },
+                    ] as { label: string; icon: React.ReactNode; action: () => void }[]).map(({ label, icon, action }) => (
+                      <button
+                        key={label}
+                        onClick={action}
+                        style={{
+                          display: "inline-flex", alignItems: "center", gap: 5,
+                          fontSize: 12, fontWeight: 500,
+                          padding: "6px 12px", borderRadius: 9999,
+                          cursor: "pointer",
+                          background: darkMode ? "rgba(129,140,248,0.08)" : "rgba(99,102,241,0.07)",
+                          border: `1px solid ${darkMode ? "rgba(129,140,248,0.22)" : "rgba(99,102,241,0.18)"}`,
+                          color: darkMode ? "rgba(165,180,252,0.90)" : "rgba(79,70,229,0.85)",
+                          transition: "background 0.15s, border-color 0.15s",
+                        }}
+                        onMouseEnter={e => {
+                          (e.currentTarget as HTMLElement).style.background = darkMode ? "rgba(129,140,248,0.16)" : "rgba(99,102,241,0.13)";
+                          (e.currentTarget as HTMLElement).style.borderColor = darkMode ? "rgba(129,140,248,0.38)" : "rgba(99,102,241,0.30)";
+                        }}
+                        onMouseLeave={e => {
+                          (e.currentTarget as HTMLElement).style.background = darkMode ? "rgba(129,140,248,0.08)" : "rgba(99,102,241,0.07)";
+                          (e.currentTarget as HTMLElement).style.borderColor = darkMode ? "rgba(129,140,248,0.22)" : "rgba(99,102,241,0.18)";
+                        }}
+                      >
+                        {icon}
+                        {label}
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
