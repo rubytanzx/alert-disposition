@@ -4687,7 +4687,7 @@ export default function Dashboard() {
               <style>{`@keyframes cardEntrance { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }`}</style>
 
               {/* Vertically centred content */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-8 px-8" style={{ zIndex:1 }}>
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 px-8" style={{ zIndex:1 }}>
                 {/* Greeting */}
                 <div className="text-center">
                   <p className="text-[10px] font-semibold uppercase tracking-widest text-indigo-400 mb-2">Monday, 8 September 2026</p>
@@ -4704,7 +4704,7 @@ export default function Dashboard() {
                       WebkitTextFillColor: "transparent",
                       backgroundClip: "text",
                       animation: "gradient-shift 4s linear infinite",
-                    }}>5 cases pending your review</span>
+                    }}>2 cases pending your review</span>
                     {" "}since your last session.
                   </p>
                   <style>{`@keyframes gradient-shift { 0% { background-position: 0% center; } 100% { background-position: 200% center; } }`}</style>
@@ -4726,9 +4726,6 @@ export default function Dashboard() {
 
                 {/* Prompt bar */}
                 <div className="w-full max-w-xl flex flex-col gap-3">
-                  <p style={{ textAlign: "center", fontSize: 13, fontWeight: 500, color: darkMode ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.45)", margin: 0 }}>
-                    What would you like to do?
-                  </p>
                   <div style={{
                     borderRadius: "9999px",
                     padding: "1.5px",
@@ -4750,7 +4747,7 @@ export default function Dashboard() {
                         value={chatInput}
                         onChange={e => setChatInput(e.target.value)}
                         onKeyDown={e => { if (e.key === "Enter") handleSend(); }}
-                        placeholder="Ask Casework Agent anything"
+                        placeholder="What would you like to do?"
                         className={`flex-1 bg-transparent text-sm focus:outline-none ${dm("text-gray-900 placeholder-gray-400","text-slate-200 placeholder-gray-600")}`}
                       />
                       <button
@@ -4793,31 +4790,22 @@ export default function Dashboard() {
                         },
                       },
                     ] as { label: string; icon: React.ReactNode; action: () => void }[]).map(({ label, icon, action }) => (
-                      <button
+                      <BorderBeamButton
                         key={label}
                         onClick={action}
-                        style={{
-                          display: "inline-flex", alignItems: "center", gap: 5,
-                          fontSize: 12, fontWeight: 500,
-                          padding: "6px 12px", borderRadius: 9999,
-                          cursor: "pointer",
-                          background: darkMode ? "rgba(129,140,248,0.08)" : "rgba(99,102,241,0.07)",
-                          border: `1px solid ${darkMode ? "rgba(129,140,248,0.22)" : "rgba(99,102,241,0.18)"}`,
-                          color: darkMode ? "rgba(165,180,252,0.90)" : "rgba(79,70,229,0.85)",
-                          transition: "background 0.15s, border-color 0.15s",
-                        }}
-                        onMouseEnter={e => {
-                          (e.currentTarget as HTMLElement).style.background = darkMode ? "rgba(129,140,248,0.16)" : "rgba(99,102,241,0.13)";
-                          (e.currentTarget as HTMLElement).style.borderColor = darkMode ? "rgba(129,140,248,0.38)" : "rgba(99,102,241,0.30)";
-                        }}
-                        onMouseLeave={e => {
-                          (e.currentTarget as HTMLElement).style.background = darkMode ? "rgba(129,140,248,0.08)" : "rgba(99,102,241,0.07)";
-                          (e.currentTarget as HTMLElement).style.borderColor = darkMode ? "rgba(129,140,248,0.22)" : "rgba(99,102,241,0.18)";
-                        }}
+                        variant="outline"
+                        beamSize="sm"
+                        colorVariant="colorful"
+                        staticColors={true}
+                        active={true}
+                        borderRadius={9999}
+                        borderBeamClassName="!overflow-hidden rounded-full"
+                        className="rounded-full px-3 py-1.5 text-xs font-medium gap-1.5 h-auto"
+                        style={darkMode ? { background: "rgba(10,8,20,0.80)", color: "rgba(165,180,252,0.90)" } : { background: "rgba(250,250,255,0.90)", color: "rgba(79,70,229,0.85)" }}
                       >
                         {icon}
                         {label}
-                      </button>
+                      </BorderBeamButton>
                     ))}
                   </div>
                 </div>
