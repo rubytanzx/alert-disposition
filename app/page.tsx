@@ -1581,7 +1581,7 @@ export default function Dashboard() {
   const [confirmRemoveIdx, setConfirmRemoveIdx]     = useState<number | null>(null);
   const [searchOpen, setSearchOpen]           = useState(false);
   const [searchQuery, setSearchQuery]         = useState("");
-  const [caseLogColWidths, setCaseLogColWidths] = useState<number[]>([55, 140, 72, 72, 72, 110, 130, 130, 90, 260]);
+  const [caseLogColWidths, setCaseLogColWidths] = useState<number[]>([20, 55, 140, 72, 72, 72, 110, 130, 130, 90, 260]);
   const [caseLogUnread, setCaseLogUnread]       = useState(false);
   const [caseLogSortCol, setCaseLogSortCol]     = useState<string>("Last Updated");
   const [caseLogSortDir, setCaseLogSortDir]     = useState<"asc"|"desc">("desc");
@@ -4408,8 +4408,9 @@ export default function Dashboard() {
                 const textMain    = darkMode ? "rgba(255,255,255,0.82)" : "rgba(0,0,0,0.80)";
                 const textSub     = darkMode ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.55)";
 
-                const colHeaders = ["Alert ID", "Watchlist Name", "Case Type", "Identifiers", "Score", "Disposition", "Last Updated", "Created", "Party Key", "Key Methodology"];
-                const STICKY_NAME_LEFT = 0;
+                const colHeaders = ["", "Alert ID", "Watchlist Name", "Case Type", "Identifiers", "Score", "Disposition", "Last Updated", "Created", "Party Key", "Key Methodology"];
+                const STICKY_DOT_LEFT  = 0;
+                const STICKY_NAME_LEFT = caseLogColWidths[0]; // dot col width
 
                 const startColResize = (colIdx: number, e: React.MouseEvent) => {
                   e.preventDefault();
@@ -4485,24 +4486,29 @@ export default function Dashboard() {
                       <thead>
                         <tr style={{ background: stickyHdrBg, borderBottom: `1px solid ${borderColor}`, position: "sticky", top: 0, zIndex: 4 }}>
                           {colHeaders.map((h, hi) => {
-                            const isSorted = caseLogSortCol === h;
-                            const isNameCol = hi === 1;
-                            const SortIcon = isSorted ? (caseLogSortDir === "asc" ? ArrowUp : ArrowDown) : ChevronsUpDown;
+                            const isDotCol  = hi === 0;
+                            const isSorted  = !isDotCol && caseLogSortCol === h;
+                            const isNameCol = hi === 2;
+                            const isStickyCol = isDotCol || isNameCol;
+                            const SortIcon  = isSorted ? (caseLogSortDir === "asc" ? ArrowUp : ArrowDown) : ChevronsUpDown;
                             return (
-                              <th key={h} onClick={() => handleSort(h)} style={{
-                                padding: "9px 12px", textAlign: "left", fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
+                              <th key={hi} onClick={isDotCol ? undefined : () => handleSort(h)} style={{
+                                padding: isDotCol ? "9px 4px" : "9px 12px", textAlign: "left", fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
                                 color: textDim,
-                                whiteSpace: "nowrap", position: isNameCol ? "sticky" : "relative", left: isNameCol ? STICKY_NAME_LEFT : undefined,
-                                zIndex: isNameCol ? 5 : undefined,
-                                background: isNameCol ? stickyHdrBg : "transparent",
-                                cursor: "pointer", userSelect: "none",
+                                whiteSpace: "nowrap", position: isStickyCol ? "sticky" : "relative",
+                                left: isDotCol ? STICKY_DOT_LEFT : isNameCol ? STICKY_NAME_LEFT : undefined,
+                                zIndex: isStickyCol ? 5 : undefined,
+                                background: isStickyCol ? stickyHdrBg : "transparent",
+                                cursor: isDotCol ? "default" : "pointer", userSelect: "none",
                                 boxShadow: isNameCol ? `2px 0 6px -2px ${darkMode ? "rgba(0,0,0,0.40)" : "rgba(0,0,0,0.10)"}` : undefined,
                               }}>
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                                  {h}
-                                  <SortIcon style={{ width: 10, height: 10, opacity: isSorted ? 0.9 : 0.4, flexShrink: 0 }} />
-                                </span>
-                                {hi < colHeaders.length - 1 && (
+                                {!isDotCol && (
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                    {h}
+                                    <SortIcon style={{ width: 10, height: 10, opacity: isSorted ? 0.9 : 0.4, flexShrink: 0 }} />
+                                  </span>
+                                )}
+                                {!isDotCol && hi < colHeaders.length - 1 && (
                                   <div
                                     onMouseDown={e => { e.stopPropagation(); startColResize(hi, e); }}
                                     style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 6, cursor: "col-resize", display: "flex", alignItems: "center", justifyContent: "center" }}
@@ -4517,7 +4523,7 @@ export default function Dashboard() {
                         </tr>
                       </thead>
                       <tbody>
-                        {sortedRows.map(({ n, disp, fields, matched, alertId, partyKey, createdDate, lastUpdated }) => {
+                        {sortedRows.map(({ n, idx, disp, fields, matched, alertId, partyKey, createdDate, lastUpdated }, si) => {
                           const isActive   = comparisonNode?.label === n.label;
                           const rowBg      = isActive ? stickyActBg : tableBg;
                           return (
@@ -4529,15 +4535,21 @@ export default function Dashboard() {
                                 if (!isActive) {
                                   const tr = e.currentTarget as HTMLElement;
                                   tr.style.background = stickyHovBg;
-                                  (tr.children[1] as HTMLElement).style.background = stickyHovBg;
+                                  (tr.children[0] as HTMLElement).style.background = stickyHovBg;
+                                  (tr.children[2] as HTMLElement).style.background = stickyHovBg;
                                 }
                               }}
                               onMouseLeave={e => {
                                 const tr = e.currentTarget as HTMLElement;
                                 tr.style.background = rowBg;
-                                (tr.children[1] as HTMLElement).style.background = rowBg;
+                                (tr.children[0] as HTMLElement).style.background = rowBg;
+                                (tr.children[2] as HTMLElement).style.background = rowBg;
                               }}
                             >
+                              {/* New-alert dot — sticky */}
+                              <td style={{ padding: "10px 4px", overflow: "hidden", verticalAlign: "middle", position: "sticky", left: STICKY_DOT_LEFT, zIndex: 1, background: rowBg }}>
+                                {si < 2 && <span style={{ display: "block", width: 6, height: 6, borderRadius: "50%", background: "#818cf8", margin: "0 auto" }} />}
+                              </td>
                               {/* Alert ID */}
                               <td style={{ padding: "10px 8px", overflow: "hidden" }}>
                                 <span style={{ fontFamily: "monospace", fontSize: 11, color: darkMode ? "rgba(129,140,248,0.85)" : "rgba(79,70,229,0.80)", background: darkMode ? "rgba(99,102,241,0.12)" : "rgba(99,102,241,0.08)", borderRadius: 4, padding: "2px 5px" }}>{alertId}</span>
@@ -4705,7 +4717,7 @@ export default function Dashboard() {
                   {([
                     { icon:Users,         end:142, label:"Customers with watchlist matches", change:"+22 since last week",  variant:"neutral" as const },
                     { icon:AlertTriangle, end:89,  label:"New matches detected",             change:"+42% vs last week",    variant:"neutral" as const },
-                    { icon:FileText,      end:27,  label:"High-risk customers",              change:"↑ 6 this week",        variant:"alert"   as const },
+                    { icon:FileText,      end:4,   label:"High-risk customers",              change:"↑ 2 this week",        variant:"alert"   as const },
                   ]).map((s,i) => (
                     <StatCard key={s.label} icon={s.icon} end={s.end} label={s.label} change={s.change} variant={s.variant} index={i} dark={darkMode} />
                   ))}
