@@ -12,6 +12,7 @@ export interface FraudNode {
   attrGroup?:   "primary" | "secondary";
   matchScore?:  number;
   matchFields?: { field: string; customer: string; watchlist: string; match: boolean }[];
+  classifications?: string[];
   matchedAttributeIndices?: number[];
   connectedTo?: number[];
   isDisposed?:    boolean;  // disposition was explicitly submitted for this node

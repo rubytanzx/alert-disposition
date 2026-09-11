@@ -14,13 +14,15 @@ import {
 } from "@/components/ui/table";
 import { useState, useEffect, useRef, useMemo, Fragment, type ReactNode } from "react";
 import {
-  AlertTriangle, ArrowLeft, ArrowRight, ArrowUp, Bell, Building2, Check, CheckCircle, ChevronDown, ChevronLeft, ChevronRight,
+  AlertTriangle, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, Building2, Check, CheckCircle, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown,
   ExternalLink, Eye, EyeOff, FileText, Flame, Globe, Inbox, Moon, PanelLeftClose, PanelLeftOpen, PanelRightClose, Pencil,
-  Landmark, LogOut, Pin, Search, Settings, ShieldAlert, ShieldCheck, Sparkles, Sun, ThumbsDown, ThumbsUp, User, Users, Wrench, X, XCircle,
+  Gavel, Landmark, LogOut, Pin, Search, Settings, ShieldAlert, ShieldCheck, Sparkles, Sun, ThumbsDown, ThumbsUp, Trash2, User, Users, Wrench, X, XCircle,
 } from "lucide-react";
 import { BorderBeamButton, BorderBeamIconButton } from "@/components/ui/border-beam-button";
 import { AIReasoningLoader } from "@/components/ui/ai-reasoning-loader";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 // ─── Sparkline ───────────────────────────────────────────────────────────────
 
@@ -135,11 +137,16 @@ function DonutChart({ dark = false }: { dark?: boolean }) {
 
 // ─── Adverse news articles ────────────────────────────────────────────────────
 
+const WORLDCHECK_SOURCE_DETAILS = [
+  { outlet: "OFAC SDN List",                        date: "2024-11-03", headline: "Entity listed under Executive Order 13599 — classified as Iranian government-related entity.", sourceType: "worldcheck" as const, tags: "OFAC • Sanctions • Asset Freeze" },
+  { outlet: "UN Security Council Consolidated List", date: "2023-07-18", headline: "Listed per UNSC Resolution 1718 — subject to mandatory travel ban and asset freeze.",        sourceType: "worldcheck" as const, tags: "UN • Sanctions • Travel Ban" },
+];
+
 const ADVERSE_ARTICLES = [
-  { outlet: "Reuters",         date: "2025-03-12", headline: "Regulators freeze assets linked to suspected sanctions evader" },
-  { outlet: "Financial Times", date: "2024-09-27", headline: "Shell company network tied to OFAC-listed individual uncovered" },
-  { outlet: "Bloomberg",       date: "2024-06-14", headline: "Treasury flags offshore accounts in multi-jurisdiction probe" },
-  { outlet: "The Guardian",    date: "2023-11-02", headline: "Leaked documents expose shadow banking ties to sanctioned states" },
+  { outlet: "Reuters",         date: "2025-03-12", headline: "Regulators freeze assets linked to suspected sanctions evader",          topics: ["Sanctions", "Asset Freeze", "AML"] },
+  { outlet: "Financial Times", date: "2024-09-27", headline: "Shell company network tied to OFAC-listed individual uncovered",         topics: ["OFAC", "Shell Company", "Sanctions"] },
+  { outlet: "Bloomberg",       date: "2024-06-14", headline: "Treasury flags offshore accounts in multi-jurisdiction probe",           topics: ["Offshore", "AML", "Treasury"] },
+  { outlet: "The Guardian",    date: "2023-11-02", headline: "Leaked documents expose shadow banking ties to sanctioned states",       topics: ["Shadow Banking", "Sanctions"] },
 ];
 
 // ─── Case data ────────────────────────────────────────────────────────────────
@@ -222,6 +229,7 @@ const CASE_NODES: Record<number, FraudNode[]> = {
       ]},
     // 3 — reversed Western order
     { label: "Bin Li",         sublabel: "EU Sanctions", risk: "high",     nodeType: "person" as const, matchScore: 74, matchedAttributeIndices: [8,10,15],
+      classifications: ["Foreign PEP", "Sanctioned by OFAC", "Sanctioned by UN", "Sanctioned by UK OFSI", "Sanctioned by EU", "Sanctioned by other authority", "Legal Enforcement Action"],
       matchFields: [
         { field: "Name",                        customer: "Li Bin",           watchlist: "Bin Li",           match: true  },
         { field: "Year of Birth (YOB)",         customer: "1975",             watchlist: "1980",             match: false },
@@ -1302,6 +1310,7 @@ type ChatMsg = {
   role: "ai" | "user";
   content: string;
   copilotStep?: CopilotStep;
+  articleWidgetIdx?: number;
   reasoning?: {
     phases: string[];
     thoughts: string[];
@@ -1371,6 +1380,8 @@ function MessageContent({ content }: { content: string }) {
 }
 
 // ─── Badge maps ───────────────────────────────────────────────────────────────
+
+const SECONDARY_FIELDS = new Set(["Primary Name","Former or Alias Name","Gender","Nationality","Occupation","Weak Link","C2C","Passport/Tax/Identification","Address"]);
 
 const riskBadgeLight:  Record<string,string> = { Critical:"bg-red-50 text-red-700 border border-red-200", High:"bg-orange-50 text-orange-700 border border-orange-200", Medium:"bg-amber-50 text-amber-700 border border-amber-200" };
 const riskBadgeDark:   Record<string,string> = { Critical:"bg-red-500/15 text-red-300 border border-red-500/25", High:"bg-orange-500/15 text-orange-400 border border-orange-500/25", Medium:"bg-amber-500/15 text-amber-400 border border-amber-500/25" };
@@ -1519,6 +1530,9 @@ function CaseListItem({ item, selected, onClick, darkMode, pinned, topMatchField
 export default function Dashboard() {
   const [collapsed, setCollapsed]           = useState(true);
   const [darkMode, setDarkMode]             = useState(true);
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", darkMode);
+  }, [darkMode]);
   const [caseListOpen, setCaseListOpen]     = useState(true);
   const [caseListWidth, setCaseListWidth]   = useState(288);
   const [chatPanelWidth, setChatPanelWidth] = useState(380);
@@ -1549,7 +1563,7 @@ export default function Dashboard() {
   const [notifsRead, setNotifsRead] = useState<number[]>([]);
   const [regenerating, setRegenerating] = useState(false);
   const [dispositionComment, setDispositionComment] = useState("");
-  const [adverseDetail, setAdverseDetail]     = useState<{ outlet: string; date: string; headline: string } | null>(null);
+  const [adverseDetail, setAdverseDetail]     = useState<{ outlet: string; date: string; headline: string; sourceType?: "worldcheck" | "adverse"; tags?: string; origIdx?: number } | null>(null);
   const [adverseArticleIdx, setAdverseArticleIdx] = useState(0);
   const [aiGuidanceStep, setAiGuidanceStep]   = useState<'overview'|'identity'|'sources'|'adverse-news'|'network'|'complete'>('overview');
   const [reviewState, setReviewState]         = useState({ identityReviewed: false, watchlistReviewed: false, adverseNewsReviewed: false, networkReviewed: false });
@@ -1561,9 +1575,20 @@ export default function Dashboard() {
   const [adverseAttrNodes, setAdverseAttrNodes]     = useState<FraudNode[]>([]);
   const [primaryScoreBoost, setPrimaryScoreBoost]   = useState(0);
   const [adverseMatchUnlocked, setAdverseMatchUnlocked] = useState(false);
+  const [adverseArticleStatuses, setAdverseArticleStatuses] = useState<Record<number, 'pending'|'added'|'excluded'>>({});
+  const [adverseArticlePopupIdx, setAdverseArticlePopupIdx] = useState<number | null>(null);
+  const [adverseAddingSet, setAdverseAddingSet]     = useState<Set<number>>(new Set());
+  const [confirmRemoveIdx, setConfirmRemoveIdx]     = useState<number | null>(null);
   const [searchOpen, setSearchOpen]           = useState(false);
   const [searchQuery, setSearchQuery]         = useState("");
+  const [caseLogColWidths, setCaseLogColWidths] = useState<number[]>([55, 140, 72, 72, 72, 110, 130, 130, 90, 260]);
+  const [caseLogUnread, setCaseLogUnread]       = useState(false);
+  const [caseLogSortCol, setCaseLogSortCol]     = useState<string>("Last Updated");
+  const [caseLogSortDir, setCaseLogSortDir]     = useState<"asc"|"desc">("desc");
+  const caseLogResizeRef = useRef<{ col: number; startX: number; startWidth: number } | null>(null);
   const chatEndRef                            = useRef<HTMLDivElement>(null);
+  const chatScrollRef                         = useRef<HTMLDivElement>(null);
+  const prevMsgCountRef                       = useRef(0);
   const searchInputRef                        = useRef<HTMLInputElement>(null);
   const typeoutRef                            = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -1636,9 +1661,32 @@ export default function Dashboard() {
     }
   }, [selectedCaseId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Scroll chat to bottom
+  // Scroll chat so the reader sees from the right entry point when new messages arrive
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const prev = prevMsgCountRef.current;
+    const curr = chatMessages.length;
+    const added = curr - prev;
+
+    if (added > 0 && prev > 0) {
+      // For a batch of purely AI messages (e.g. 4 article widgets), anchor to the
+      // message just before the batch so context stays visible at the top.
+      // When the first new message is from the user (user bubble + reasoning), scroll
+      // to the user message itself so the turn starts in view.
+      const firstNewIsUser = chatMessages[prev]?.role === "user";
+      const anchorIdx = (!firstNewIsUser && added > 1) ? Math.max(0, prev - 1) : prev;
+      const target = el.querySelector<HTMLElement>(`[data-msg-index="${anchorIdx}"]`);
+      if (target) {
+        const containerTop = el.getBoundingClientRect().top;
+        const elemTop = target.getBoundingClientRect().top;
+        el.scrollTo({ top: el.scrollTop + (elemTop - containerTop) - 12, behavior: "smooth" });
+      }
+    } else if (curr > 0 && prev === 0) {
+      // Very first batch — scroll to bottom so initial summary is visible
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }
+    prevMsgCountRef.current = curr;
   }, [chatMessages]);
 
   // Clear pulse highlight after animation
@@ -1787,7 +1835,28 @@ export default function Dashboard() {
         isTrueHit: false,
         isLoading: false,
       })));
+      // Init all articles as pending — user must explicitly add each to evidence
+      setAdverseArticleStatuses({ 0: 'pending', 1: 'pending', 2: 'pending', 3: 'pending' });
+      setAdverseAddingSet(new Set());
+      // Inject slim article widget messages into chat
+      ADVERSE_ARTICLES.forEach((_, idx) => {
+        setChatMessages(prev => [...prev, { role: 'ai' as const, content: '', articleWidgetIdx: idx }]);
+      });
     }, 5200);
+  };
+
+  const handleAddToEvidence = (idx: number) => {
+    setAdverseAddingSet(prev => new Set([...prev, idx]));
+    setAdverseArticlePopupIdx(null);
+    setTimeout(() => {
+      setAdverseArticleStatuses(prev => ({ ...prev, [idx]: 'added' }));
+      setAdverseAddingSet(prev => { const s = new Set(prev); s.delete(idx); return s; });
+    }, 900);
+  };
+
+  const handleDontInclude = (idx: number) => {
+    setAdverseArticleStatuses(prev => ({ ...prev, [idx]: 'excluded' }));
+    setAdverseArticlePopupIdx(null);
   };
   const handleReviewAdverseNews = () => {
     setAdverseArticleIdx(0);
@@ -1928,9 +1997,24 @@ export default function Dashboard() {
   const strongestNode = caseNodes.length > 0 ? caseNodes.reduce((b, n) => (n.matchScore ?? 0) > (b.matchScore ?? 0) ? n : b, caseNodes[0]) : null;
   const isReasoningLoading = chatMessages.some(m => m.reasoning && !m.reasoning.done) && !chatMessages.some(m => m.copilotStep);
 
+  // Ordered list of all source detail items traversable in the right pane:
+  // WorldCheck sources (always present) + adverse articles added to evidence
+  const traversableSourceItems = useMemo(() => [
+    ...WORLDCHECK_SOURCE_DETAILS,
+    ...ADVERSE_ARTICLES
+      .map((art, i) => ({ ...art, sourceType: "adverse" as const, origIdx: i }))
+      .filter(item => adverseArticleStatuses[item.origIdx] === "added"),
+  ], [adverseArticleStatuses]);
+
+  // Filter out news nodes for articles the user has excluded
+  const visibleAdverseAttrNodes = useMemo(() =>
+    adverseAttrNodes.filter((_, i) => adverseArticleStatuses[i] !== 'excluded'),
+    [adverseAttrNodes, adverseArticleStatuses]
+  );
+
   // Combine display nodes with dynamic adverse-news attr nodes
   const canvasNodes = useMemo(() => {
-    if (adverseAttrNodes.length === 0) return displayNodes;
+    if (visibleAdverseAttrNodes.length === 0) return displayNodes;
     const baseIdx = displayNodes.length;
     const personIdxByScore = displayNodes
       .map((n, i) => ({ n, i }))
@@ -1939,8 +2023,8 @@ export default function Dashboard() {
     const primaryIdx   = personIdxByScore[0]?.i ?? -1;
     const secondaryIdx = personIdxByScore[1]?.i ?? -1;
     const tertiaryIdx  = personIdxByScore[2]?.i ?? -1;
-    const newsIndices  = adverseAttrNodes.map((_, ai) => baseIdx + ai);
-    const adverseLoaded = adverseAttrNodes.every(n => !n.isLoading);
+    const newsIndices  = visibleAdverseAttrNodes.map((_, ai) => baseIdx + ai);
+    const adverseLoaded = visibleAdverseAttrNodes.every(n => !n.isLoading);
     return displayNodes.map((n, i) => {
       if (i === primaryIdx) {
         return {
@@ -1962,8 +2046,8 @@ export default function Dashboard() {
         };
       }
       return n;
-    }).concat(adverseAttrNodes.map(n => ({ ...n, matchFields: n.matchFields, isDisposed: false, isTrueHit: false, isForcedAuto: false })));
-  }, [displayNodes, adverseAttrNodes, primaryScoreBoost]); // eslint-disable-line react-hooks/exhaustive-deps
+    }).concat(visibleAdverseAttrNodes.map(n => ({ ...n, matchFields: n.matchFields, isDisposed: false, isTrueHit: false, isForcedAuto: false })));
+  }, [displayNodes, visibleAdverseAttrNodes, primaryScoreBoost]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // While the initial reasoning is loading, show all surrounding nodes as skeleton placeholders.
   // Also derives matchedAttributeIndices dynamically from matchFields so each person node
@@ -2012,13 +2096,168 @@ export default function Dashboard() {
 
   return (
     <div
-      className="h-screen w-screen flex flex-col overflow-hidden px-3 pb-3 pt-2 gap-2 relative"
+      className={`h-screen w-screen flex flex-col overflow-hidden px-3 pb-3 pt-2 gap-2 relative${darkMode ? " dark" : ""}`}
       style={{
         background: darkMode
           ? "linear-gradient(155deg,#1e1340 0%,#160f32 35%,#110c26 65%,#0c081c 100%)"
           : "linear-gradient(135deg,#f4f2fa 0%,#eef1fb 40%,#f0edf9 70%,#eaf3f8 100%)",
       }}
     >
+      {/* ── Remove from evidence confirmation dialog ── */}
+      <Dialog open={confirmRemoveIdx !== null} onOpenChange={open => { if (!open) setConfirmRemoveIdx(null); }}>
+        <DialogContent showCloseButton={false} className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Remove from Found Sources?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to remove this article from Found Sources? You can re-add it from the chat.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmRemoveIdx(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => {
+              if (confirmRemoveIdx !== null) {
+                setAdverseArticleStatuses(prev => ({ ...prev, [confirmRemoveIdx]: 'pending' }));
+                if (adverseDetail && (adverseDetail as { origIdx?: number }).origIdx === confirmRemoveIdx) setAdverseDetail(null);
+                setConfirmRemoveIdx(null);
+              }
+            }}>Remove</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Article detail popup ── */}
+      {adverseArticlePopupIdx !== null && (() => {
+        const popArt = ADVERSE_ARTICLES[adverseArticlePopupIdx];
+        const popStatus = adverseArticleStatuses[adverseArticlePopupIdx];
+        const popAdded = popStatus === 'added';
+        return (
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(4,2,14,0.72)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 16px", animation: "search-backdrop-in 0.18s ease-out both" }}
+            onClick={() => setAdverseArticlePopupIdx(null)}
+          >
+            <div
+              style={{ width: "100%", maxWidth: 520, maxHeight: "85vh", display: "flex", flexDirection: "column", background: darkMode ? "rgba(12,9,26,0.98)" : "rgba(255,255,255,0.99)", border: `1px solid ${darkMode ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.09)"}`, borderRadius: 16, boxShadow: darkMode ? "0 32px 96px rgba(0,0,0,0.80), 0 0 0 0.5px rgba(99,102,241,0.18)" : "0 24px 64px rgba(0,0,0,0.18), 0 0 0 1px rgba(99,102,241,0.12)", overflow: "hidden", animation: "search-panel-in 0.2s cubic-bezier(0.16,1,0.3,1) both", position: "relative" }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Close button */}
+              <button
+                onClick={() => setAdverseArticlePopupIdx(null)}
+                style={{ position: "absolute", top: 12, right: 12, zIndex: 10, width: 28, height: 28, borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center", background: darkMode ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)", border: "none", cursor: "pointer", color: darkMode ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.50)" }}
+              >
+                <X style={{ width: 14, height: 14 }} />
+              </button>
+
+              {/* Scrollable body */}
+              <div style={{ flex: 1, overflowY: "auto", padding: "20px 20px 0" }}>
+                {/* Source row */}
+                <div style={{ display: "flex", alignItems: "center", marginBottom: 2 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: darkMode ? "rgba(255,255,255,0.88)" : "rgba(0,0,0,0.80)" }}>{popArt.outlet}</span>
+                  <ExternalLink style={{ width: 11, height: 11, color: darkMode ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.30)", marginLeft: 5 }} />
+                </div>
+                <p style={{ fontSize: 12, color: darkMode ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.40)", margin: "0 0 10px" }}>{popArt.date}</p>
+                <p style={{ fontSize: 17, fontWeight: 700, color: darkMode ? "rgba(255,255,255,0.92)" : "rgba(0,0,0,0.88)", lineHeight: 1.35, marginBottom: 12 }}>{popArt.headline}</p>
+                {/* Tags */}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, color: "#f59e0b", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 20, padding: "2px 8px" }}>
+                    <AlertTriangle style={{ width: 10, height: 10 }} />Adverse News
+                  </span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 500, color: darkMode ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.50)", background: darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.05)", border: `1px solid ${darkMode ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.08)"}`, borderRadius: 20, padding: "2px 8px" }}>
+                    Web crawl
+                  </span>
+                  {popArt.topics.map((t, ti) => (
+                    <span key={ti} style={{ display: "inline-flex", fontSize: 11, fontWeight: 500, color: darkMode ? "rgba(255,255,255,0.50)" : "rgba(0,0,0,0.45)", background: darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)", border: `1px solid ${darkMode ? "rgba(255,255,255,0.09)" : "rgba(0,0,0,0.07)"}`, borderRadius: 20, padding: "2px 8px" }}>
+                      {t}
+                    </span>
+                  ))}
+                </div>
+                {/* Blurb */}
+                <div style={{ background: darkMode ? "linear-gradient(160deg, rgba(255,255,255,0.03) 0%, rgba(9,7,22,0.80) 70%) padding-box, linear-gradient(135deg, rgba(129,140,248,0.5) 0%, rgba(192,132,252,0.4) 50%, rgba(244,114,182,0.35) 100%) border-box" : "linear-gradient(160deg, rgba(255,255,255,0.95) 0%, rgba(240,236,255,0.80) 100%) padding-box, linear-gradient(135deg, rgba(129,140,248,0.5) 0%, rgba(192,132,252,0.4) 50%, rgba(244,114,182,0.35) 100%) border-box", border: "1px solid transparent", borderRadius: 8, padding: "10px 12px", marginBottom: 18, fontSize: 12, color: darkMode ? "rgba(255,255,255,0.65)" : "rgba(0,0,0,0.60)", lineHeight: 1.55 }}>
+                  This article mentions <strong style={{ color: darkMode ? "rgba(255,255,255,0.88)" : "rgba(0,0,0,0.82)", fontWeight: 600 }}>{selectedCase?.customerName}</strong> in relation to asset freezes and alleged links to sanctioned entities.
+                </div>
+                {/* Matched Person */}
+                <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "#818cf8", marginBottom: 10 }}>Matched Person</p>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18, padding: "10px 12px", borderRadius: 8, background: darkMode ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)", border: `1px solid ${darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.07)"}` }}>
+                  <div className={`flex items-center justify-center h-8 w-8 rounded-full text-xs font-bold flex-shrink-0 ${darkMode ? (selectedCase?.colorDark ?? "") : (selectedCase?.colorLight ?? "")}`}>{selectedCase?.initials}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: darkMode ? "rgba(255,255,255,0.88)" : "rgba(0,0,0,0.82)" }}>{selectedCase?.customerName}</div>
+                    <div style={{ fontSize: 11, color: darkMode ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.40)", marginTop: 1 }}>↔ {selectedCase?.watchlistName}</div>
+                  </div>
+                  {(() => { const fields = comparisonNode?.matchFields ?? []; const matched = fields.filter(f => f.match).length; const total = fields.length; const score = (comparisonNode?.matchScore ?? selectedCase?.confidence ?? 0) + primaryScoreBoost; const col = score >= 80 ? "#ef4444" : score >= 60 ? "#f59e0b" : "#6b7280"; const bg = score >= 80 ? "rgba(239,68,68,0.12)" : score >= 60 ? "rgba(245,158,11,0.12)" : "rgba(107,114,128,0.12)"; return <span style={{ fontSize: 11, fontWeight: 600, color: col, background: bg, borderRadius: 20, padding: "3px 9px", flexShrink: 0, whiteSpace: "nowrap" }}>{total ? `${matched}/${total} identifiers` : ""}{total ? " • " : ""}{score}% similarity</span>; })()}
+                </div>
+                {/* Identifiers Discovered */}
+                <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "#818cf8", marginBottom: 10 }}>Identifiers Discovered <span style={{ color: darkMode ? "rgba(255,255,255,0.40)" : "rgba(0,0,0,0.40)", fontWeight: 500, textTransform: "none", letterSpacing: 0 }}>(3)</span></p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 0, marginBottom: 18 }}>
+                  {[
+                    { icon: <User style={{ width: 13, height: 13 }} />, label: "Name",              value: selectedCase?.customerName },
+                    { icon: <Globe style={{ width: 13, height: 13 }} />, label: "Nationality",     value: selectedCase?.id === 1 ? "China (PRC)" : selectedCase?.id === 2 ? "Bangladesh" : selectedCase?.id === 3 ? "Malaysia" : selectedCase?.id === 4 ? "Malaysia" : "France" },
+                    { icon: <Building2 style={{ width: 13, height: 13 }} />, label: "Associated entity", value: (selectedCase?.id ?? 0) <= 2 ? "Front Co. Ltd" : "Horizon Advisory Ltd" },
+                  ].map((row, ri, rarr) => (
+                    <div key={ri} style={{ display: "grid", gridTemplateColumns: "18px 1fr 1fr", gap: 6, alignItems: "center", padding: "7px 0", borderBottom: ri < rarr.length - 1 ? `1px solid ${darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)"}` : "none" }}>
+                      <span style={{ color: darkMode ? "rgba(255,255,255,0.30)" : "rgba(0,0,0,0.35)" }}>{row.icon}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: darkMode ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.50)" }}>{row.label}</span>
+                      <span style={{ fontSize: 12, color: darkMode ? "rgba(255,255,255,0.80)" : "rgba(0,0,0,0.75)" }}>{row.value}</span>
+                    </div>
+                  ))}
+                </div>
+                {/* Matched in Article */}
+                <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "#818cf8", marginBottom: 10 }}>Matched in Article <span style={{ fontSize: 11, color: darkMode ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.40)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>2 key excerpts</span></p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+                  {[
+                    { para: "Paragraph 3", text: `...authorities identified `, highlighted: selectedCase?.customerName ?? "", after: ` as an associate of Horizon Directors Ltd, a company linked to sanctioned individuals...` },
+                    { para: "Paragraph 6", text: `Assets belonging to `, highlighted: selectedCase?.customerName ?? "", after: ` and related entities have been frozen under the latest round of sanctions...` },
+                  ].map((ex, ei) => (
+                    <div key={ei} style={{ borderRadius: 8, border: `1px solid ${darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.07)"}`, padding: "10px 12px", background: darkMode ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.02)" }}>
+                      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+                        <span style={{ fontSize: 10, color: darkMode ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.35)" }}>{ex.para}</span>
+                      </div>
+                      <p style={{ fontSize: 12, color: darkMode ? "rgba(255,255,255,0.70)" : "rgba(0,0,0,0.65)", lineHeight: 1.55, margin: 0 }}>
+                        {ex.text}
+                        <mark style={{ background: "rgba(245,158,11,0.35)", color: "inherit", borderRadius: 2, padding: "0 2px" }}>{ex.highlighted}</mark>
+                        {ex.after}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                {/* View full article */}
+                <div style={{ padding: "12px 0 16px" }}>
+                  <button style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", background: darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.05)", border: `1px solid ${darkMode ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.08)"}`, color: darkMode ? "rgba(255,255,255,0.80)" : "rgba(0,0,0,0.70)" }}>
+                    View full article <ExternalLink style={{ width: 13, height: 13 }} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Footer actions */}
+              <div style={{ padding: "14px 20px", borderTop: `1px solid ${darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)"}`, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, background: darkMode ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.015)" }}>
+                {popAdded ? (
+                  <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#4ade80" }}>
+                    <Check style={{ width: 14, height: 14 }} /> Added to evidence
+                  </span>
+                ) : (<>
+                  <button
+                    onClick={() => handleDontInclude(adverseArticlePopupIdx!)}
+                    style={{ fontSize: 13, fontWeight: 500, color: darkMode ? "rgba(255,255,255,0.42)" : "rgba(0,0,0,0.42)", background: "none", border: "none", cursor: "pointer", padding: "4px 4px" }}
+                  >
+                    Don&apos;t include
+                  </button>
+                  <BorderBeamButton
+                    type="button"
+                    variant="outline"
+                    beamSize="md"
+                    colorVariant="colorful"
+                    active={true}
+                    onClick={() => handleAddToEvidence(adverseArticlePopupIdx!)}
+                    className="rounded-lg font-semibold border-transparent"
+                    style={{ height: 36, fontSize: 13, padding: "0 16px", background: darkMode ? "rgba(9,7,22,0.92)" : "rgba(250,249,255,0.95)", color: darkMode ? "rgba(255,255,255,0.88)" : "rgba(0,0,0,0.80)" }}
+                  >
+                    Add to evidence
+                  </BorderBeamButton>
+                </>)}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Spotlight search overlay ── */}
       {searchOpen && (
         <div
@@ -2203,13 +2442,17 @@ export default function Dashboard() {
       {/* Top bar card */}
       <div className="flex-shrink-0 rounded-2xl flex items-center px-4 py-1.5 relative" style={{ zIndex:2, ...panelStyle, boxShadow:"none", border:"none", background:"transparent", backdropFilter:"none", WebkitBackdropFilter:"none" }}>
         {/* Logo */}
-        <div className="flex items-center gap-2.5 flex-shrink-0">
+        <button
+          onClick={() => setSelectedCaseId(null)}
+          className="flex items-center gap-2.5 flex-shrink-0"
+          style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
+        >
           <svg width="22" height="22" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M0 22.6L17.66 16.03L0 9.13V0L30.24 12.18V19.75L0 32V22.6Z" fill="#A100FF"/>
           </svg>
           <div className={`w-px h-4 ${dm("bg-gray-300","bg-white/20")}`} />
-          <span className={`text-xs font-light tracking-[0.18em] uppercase ${dm("text-gray-700","text-slate-200")}`}>Investigator</span>
-        </div>
+          <span className={`text-xs font-light tracking-[0.18em] uppercase ${dm("text-gray-700","text-slate-200")}`}>Gator</span>
+        </button>
 
         <div className="flex-1" />
 
@@ -2669,16 +2912,20 @@ export default function Dashboard() {
                 { key:"audit",     label:"Audit Trail" },
               ].map(({ key, label }) => {
                 const active = caseTab === key;
+                const showDot = key === "caselog" && caseLogUnread && !active;
                 return (
                   <button key={key}
-                    onClick={() => setCaseTab(key as typeof caseTab)}
+                    onClick={() => { setCaseTab(key as typeof caseTab); if (key === "caselog") setCaseLogUnread(false); }}
                     className={`text-sm font-medium pb-0.5 relative transition-colors rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ${
                       active
                         ? dm("text-gray-900 after:absolute after:bottom-[-13px] after:left-0 after:right-0 after:h-0.5 after:bg-gray-900 after:rounded-full","text-white after:absolute after:bottom-[-13px] after:left-0 after:right-0 after:h-0.5 after:bg-indigo-400 after:rounded-full")
                         : dm("text-gray-400 hover:text-gray-700","text-gray-500 hover:text-gray-300")
                     }`}
                   >
-                    {label}
+                    <span className="flex items-center gap-1.5">
+                      {label}
+                      {showDot && <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 inline-block" />}
+                    </span>
                   </button>
                 );
               })}
@@ -2905,13 +3152,13 @@ export default function Dashboard() {
                 </div>
 
                 {/* Chat area — single rolling conversation */}
-                <div className="flex-1 overflow-y-auto px-5 py-5" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-5 py-5" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
                   {chatMessages.map((msg, i) => {
                     const isLast = i === chatMessages.length - 1;
 
                     if (msg.role === "user") {
                       return (
-                        <div key={i} className="flex justify-end">
+                        <div key={i} data-msg-index={i} className="flex justify-end">
                           <div
                             className={`leading-relaxed rounded-2xl px-3 py-2 max-w-[85%] ${dm("bg-indigo-600 text-white","bg-indigo-500/80 text-white")}`}
                             style={{ fontSize: 14 }}
@@ -2937,7 +3184,7 @@ export default function Dashboard() {
                     // Reasoning (chain-of-thought) AI message
                     if (msg.reasoning) {
                       return (
-                        <div key={i} className="w-full">
+                        <div key={i} data-msg-index={i} className="w-full">
                           <AIReasoningLoader
                             phases={msg.reasoning.phases}
                             thoughts={msg.reasoning.thoughts}
@@ -2950,10 +3197,91 @@ export default function Dashboard() {
                       );
                     }
 
+                    // Article widget message
+                    if (msg.articleWidgetIdx !== undefined) {
+                      const artIdx = msg.articleWidgetIdx;
+                      const art = ADVERSE_ARTICLES[artIdx];
+                      const artStatus = adverseArticleStatuses[artIdx];
+                      const isAdding = adverseAddingSet.has(artIdx);
+                      const isAdded = artStatus === 'added';
+                      const isExcluded = artStatus === 'excluded';
+                      return (
+                        <div key={i} data-msg-index={i} className="w-full">
+                          <div
+                            onClick={() => !isExcluded && !isAdded && setAdverseArticlePopupIdx(artIdx)}
+                            onMouseEnter={e => { if (!isExcluded && !isAdded) { const el = e.currentTarget as HTMLElement; el.style.border = `1px solid ${darkMode ? "rgba(255,255,255,0.22)" : "rgba(0,0,0,0.18)"}`; el.style.background = darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)"; el.style.boxShadow = darkMode ? "0 2px 12px rgba(0,0,0,0.18)" : "0 2px 10px rgba(0,0,0,0.08)"; } }}
+                            onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.border = `1px solid ${isAdded ? "rgba(74,222,128,0.25)" : isExcluded ? (darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)") : (darkMode ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.09)")}`; el.style.background = isAdded ? (darkMode ? "rgba(74,222,128,0.05)" : "rgba(74,222,128,0.04)") : isExcluded ? (darkMode ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)") : (darkMode ? "rgba(255,255,255,0.035)" : "rgba(0,0,0,0.025)"); el.style.boxShadow = "none"; }}
+                            style={{
+                              borderRadius: 10,
+                              border: `1px solid ${isAdded ? "rgba(74,222,128,0.25)" : isExcluded ? (darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)") : (darkMode ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.09)")}`,
+                              background: isAdded ? (darkMode ? "rgba(74,222,128,0.05)" : "rgba(74,222,128,0.04)") : isExcluded ? (darkMode ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)") : (darkMode ? "rgba(255,255,255,0.035)" : "rgba(0,0,0,0.025)"),
+                              overflow: "hidden",
+                              cursor: isExcluded || isAdded ? "default" : "pointer",
+                              opacity: isExcluded ? 0.45 : 1,
+                              transition: "opacity 0.2s, background 0.15s, border-color 0.15s, box-shadow 0.15s",
+                            }}
+                          >
+                            {/* Card header */}
+                            <div style={{ padding: "10px 12px 0" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: darkMode ? "rgba(255,255,255,0.88)" : "rgba(0,0,0,0.80)" }}>{art.outlet}</span>
+                                <ExternalLink style={{ width: 10, height: 10, color: darkMode ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.30)" }} />
+                                <span style={{ marginLeft: "auto", fontSize: 11, color: darkMode ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.40)" }}>{art.date}</span>
+                              </div>
+                              <p style={{ fontSize: 13, fontWeight: 600, color: isExcluded ? (darkMode ? "rgba(255,255,255,0.50)" : "rgba(0,0,0,0.45)") : (darkMode ? "rgba(255,255,255,0.88)" : "rgba(0,0,0,0.82)"), lineHeight: 1.4, margin: "0 0 8px" }}>
+                                {isExcluded ? <s>{art.headline}</s> : art.headline}
+                              </p>
+                              {/* Topic tags */}
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>
+                                {art.topics.map((t, ti) => (
+                                  <span key={ti} style={{ fontSize: 10, fontWeight: 600, color: darkMode ? "rgba(255,255,255,0.50)" : "rgba(0,0,0,0.45)", background: darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.05)", border: `1px solid ${darkMode ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.08)"}`, borderRadius: 20, padding: "2px 7px" }}>
+                                    {t}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            {/* Action row */}
+                            <div style={{ padding: "8px 12px 10px", borderTop: `1px solid ${darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)"}`, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
+                              {isAdded ? (
+                                <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "#4ade80" }}>
+                                  <Check style={{ width: 13, height: 13 }} /> Added to evidence
+                                </span>
+                              ) : isExcluded ? (
+                                <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 500, color: darkMode ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.35)" }}>
+                                  <X style={{ width: 12, height: 12 }} /> Not included
+                                </span>
+                              ) : isAdding ? (
+                                <span style={{ fontSize: 12, color: darkMode ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.40)" }}>Adding…</span>
+                              ) : (<>
+                                <button
+                                  onClick={e => { e.stopPropagation(); handleDontInclude(artIdx); }}
+                                  style={{ fontSize: 12, fontWeight: 500, color: darkMode ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.40)", background: "none", border: "none", cursor: "pointer", padding: "4px 4px" }}
+                                >
+                                  Don&apos;t include
+                                </button>
+                                <BorderBeamButton
+                                  type="button"
+                                  variant="outline"
+                                  beamSize="sm"
+                                  colorVariant="colorful"
+                                  active={true}
+                                  onClick={e => { e.stopPropagation(); handleAddToEvidence(artIdx); }}
+                                  className="rounded-md font-semibold border-transparent"
+                                  style={{ height: 28, fontSize: 12, padding: "0 10px", background: darkMode ? "rgba(9,7,22,0.92)" : "rgba(250,249,255,0.95)", color: darkMode ? "rgba(255,255,255,0.88)" : "rgba(0,0,0,0.80)" }}
+                                >
+                                  Add to evidence
+                                </BorderBeamButton>
+                              </>)}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
                     // Regular (non-copilot) AI message
                     if (!msg.copilotStep) {
                       return (
-                        <div key={i} className="w-full">
+                        <div key={i} data-msg-index={i} className="w-full">
                           <div className={`leading-relaxed [&_p]:text-[14px] [&_p]:leading-snug [&_p]:mb-0 ${dm("text-gray-800","text-slate-300")}`} style={{ fontSize: 14 }}>
                             <MessageContent content={msg.content} />
                           </div>
@@ -2968,7 +3296,7 @@ export default function Dashboard() {
                     const btnStyle: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 14, fontWeight: 600, color: "#818cf8", background: "rgba(129,140,248,0.10)", border: "1px solid rgba(129,140,248,0.22)", borderRadius: 7, padding: "8px 14px", cursor: "pointer", marginTop: 4 };
 
                     return (
-                      <div key={i} className="w-full [&_p]:text-[14px] [&_p]:leading-snug" style={{ fontSize: 14, color: aiColor, lineHeight: 1.65 }}>
+                      <div key={i} data-msg-index={i} className="w-full [&_p]:text-[14px] [&_p]:leading-snug" style={{ fontSize: 14, color: aiColor, lineHeight: 1.65 }}>
 
                         {/* ── overview ── */}
                         {msg.copilotStep === "overview" && (<>
@@ -3053,27 +3381,13 @@ export default function Dashboard() {
 
                         {/* ── sources ── */}
                         {msg.copilotStep === "sources" && (<>
-                          {adverseSearchState !== "loading" && (<>
-                            <p style={{ marginBottom: 14 }}>
-                              Found 2 adverse news articles referencing{" "}
-                              <strong style={{ color: darkMode ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.80)" }}>{selectedCase.watchlistName}</strong>.
-                              {" "}These may provide additional corroborating identifiers.
+                          {adverseSearchState !== "loading" && (
+                            <p style={{ marginBottom: 4 }}>
+                              Found <strong style={{ color: darkMode ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.80)" }}>{ADVERSE_ARTICLES.length} adverse news articles</strong> referencing{" "}
+                              <strong style={{ color: darkMode ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.80)" }}>{selectedCase.watchlistName}</strong>.{" "}
+                              Review each article below and add any that support your assessment.
                             </p>
-                            {isLast && (
-                              <BorderBeamButton
-                                type="button"
-                                variant="outline"
-                                beamSize="md"
-                                colorVariant="colorful"
-                                active={true}
-                                onClick={handleReviewAdverseNews}
-                                className="w-full justify-center rounded-lg font-semibold border-transparent"
-                                style={{ height: 32, fontSize: 13, marginTop: 0, background: darkMode ? "rgba(9,7,22,0.92)" : "rgba(250,249,255,0.95)", color: darkMode ? "rgba(255,255,255,0.88)" : "rgba(0,0,0,0.80)" }}
-                              >
-                                Review adverse news
-                              </BorderBeamButton>
-                            )}
-                          </>)}
+                          )}
                         </>)}
 
                         {/* ── adverse-news → recommendation ── */}
@@ -3311,57 +3625,93 @@ export default function Dashboard() {
                   /* ── Adverse News Detail ── */
                   <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
                     <div style={{ padding: "16px 16px 20px", flex: 1 }}>
-                      {/* Source row + pagination */}
-                      <div style={{ display: "flex", alignItems: "center", marginBottom: 2 }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: darkMode ? "rgba(255,255,255,0.88)" : "rgba(0,0,0,0.80)" }}>{adverseDetail.outlet}</span>
-                        <ExternalLink style={{ width: 10, height: 10, color: darkMode ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.30)", flexShrink: 0, marginLeft: 4 }} />
-                        {/* Pagination */}
-                        <div style={{ display: "flex", alignItems: "center", gap: 0, background: darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)", borderRadius: 20, padding: "2px 4px", marginLeft: "auto" }}>
+                      {/* Row 1: pagination centred */}
+                      <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 0, background: darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)", borderRadius: 20, padding: "2px 4px" }}>
                           <button
-                            onClick={() => { const i = Math.max(0, adverseArticleIdx - 1); setAdverseArticleIdx(i); setAdverseDetail(ADVERSE_ARTICLES[i]); }}
+                            onClick={() => { const i = Math.max(0, adverseArticleIdx - 1); setAdverseArticleIdx(i); setAdverseDetail(traversableSourceItems[i]); }}
                             disabled={adverseArticleIdx === 0}
                             style={{ background: "none", border: "none", cursor: adverseArticleIdx === 0 ? "default" : "pointer", padding: "2px 6px", color: adverseArticleIdx === 0 ? (darkMode ? "rgba(255,255,255,0.20)" : "rgba(0,0,0,0.20)") : (darkMode ? "rgba(255,255,255,0.70)" : "rgba(0,0,0,0.60)"), display: "flex", alignItems: "center" }}
                           >
                             <ChevronLeft style={{ width: 12, height: 12 }} />
                           </button>
-                          <span style={{ fontSize: 11, fontWeight: 600, color: darkMode ? "rgba(255,255,255,0.60)" : "rgba(0,0,0,0.55)", padding: "0 2px", userSelect: "none" }}>
-                            {adverseArticleIdx + 1} of {ADVERSE_ARTICLES.length}
+                          <span style={{ fontSize: 11, fontWeight: 600, color: darkMode ? "rgba(255,255,255,0.60)" : "rgba(0,0,0,0.55)", padding: "0 2px", userSelect: "none", whiteSpace: "nowrap" }}>
+                            {adverseArticleIdx + 1} of {traversableSourceItems.length}
                           </span>
                           <button
-                            onClick={() => { const i = Math.min(ADVERSE_ARTICLES.length - 1, adverseArticleIdx + 1); setAdverseArticleIdx(i); setAdverseDetail(ADVERSE_ARTICLES[i]); }}
-                            disabled={adverseArticleIdx === ADVERSE_ARTICLES.length - 1}
-                            style={{ background: "none", border: "none", cursor: adverseArticleIdx === ADVERSE_ARTICLES.length - 1 ? "default" : "pointer", padding: "2px 6px", color: adverseArticleIdx === ADVERSE_ARTICLES.length - 1 ? (darkMode ? "rgba(255,255,255,0.20)" : "rgba(0,0,0,0.20)") : (darkMode ? "rgba(255,255,255,0.70)" : "rgba(0,0,0,0.60)"), display: "flex", alignItems: "center" }}
+                            onClick={() => { const i = Math.min(traversableSourceItems.length - 1, adverseArticleIdx + 1); setAdverseArticleIdx(i); setAdverseDetail(traversableSourceItems[i]); }}
+                            disabled={adverseArticleIdx === traversableSourceItems.length - 1}
+                            style={{ background: "none", border: "none", cursor: adverseArticleIdx === traversableSourceItems.length - 1 ? "default" : "pointer", padding: "2px 6px", color: adverseArticleIdx === traversableSourceItems.length - 1 ? (darkMode ? "rgba(255,255,255,0.20)" : "rgba(0,0,0,0.20)") : (darkMode ? "rgba(255,255,255,0.70)" : "rgba(0,0,0,0.60)"), display: "flex", alignItems: "center" }}
                           >
                             <ChevronRight style={{ width: 12, height: 12 }} />
                           </button>
                         </div>
                       </div>
-                      {/* Date below outlet */}
-                      <p style={{ fontSize: 12, color: darkMode ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.40)", margin: "0 0 10px" }}>{adverseDetail.date}</p>
+                      {/* Row 2: outlet • date (left) + Don't include (right) */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                        <button onClick={() => {}} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, minWidth: 0, flex: 1 }} title={adverseDetail.outlet}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: darkMode ? "rgba(255,255,255,0.88)" : "rgba(0,0,0,0.80)", textDecoration: "underline", textUnderlineOffset: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "50%" }}>{adverseDetail.outlet}</span>
+                          <span style={{ fontSize: 12, color: darkMode ? "rgba(255,255,255,0.30)" : "rgba(0,0,0,0.35)", flexShrink: 0 }}>•</span>
+                          <span style={{ fontSize: 12, color: darkMode ? "rgba(255,255,255,0.40)" : "rgba(0,0,0,0.45)", flexShrink: 0 }}>{adverseDetail.date}</span>
+                        </button>
+                        {(() => {
+                          const isAdverse = adverseDetail.sourceType === "adverse" && adverseDetail.origIdx !== undefined;
+                          return (
+                            <button
+                              disabled={!isAdverse}
+                              onClick={isAdverse ? () => {
+                                setConfirmRemoveIdx((adverseDetail as { origIdx?: number }).origIdx!);
+                              } : undefined}
+                              title={isAdverse ? "Remove from evidence" : "WorldCheck sources cannot be removed"}
+                              style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", padding: "3px 0", cursor: isAdverse ? "pointer" : "not-allowed", fontSize: 11, fontWeight: 500, color: isAdverse ? "#f87171" : (darkMode ? "rgba(255,255,255,0.20)" : "rgba(0,0,0,0.22)"), opacity: isAdverse ? 0.75 : 1, transition: "opacity 0.15s" }}
+                              onMouseEnter={e => { if (isAdverse) (e.currentTarget as HTMLElement).style.opacity = "1"; }}
+                              onMouseLeave={e => { if (isAdverse) (e.currentTarget as HTMLElement).style.opacity = "0.75"; }}
+                            >
+                              <X style={{ width: 11, height: 11 }} />
+                              Don&apos;t include
+                            </button>
+                          );
+                        })()}
+                      </div>
                       {/* Headline */}
                       <p style={{ fontSize: 16, fontWeight: 700, color: darkMode ? "rgba(255,255,255,0.92)" : "rgba(0,0,0,0.88)", lineHeight: 1.35, marginBottom: 10 }}>{adverseDetail.headline}</p>
-                      {/* Tags */}
-                      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, color: "#f59e0b", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 20, padding: "2px 8px" }}>
-                          <AlertTriangle style={{ width: 10, height: 10 }} />Adverse News
-                        </span>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 500, color: darkMode ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.50)", background: darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.05)", border: `1px solid ${darkMode ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.08)"}`, borderRadius: 20, padding: "2px 8px" }}>
-                          Web crawl
-                        </span>
+                      {/* Tags — WorldCheck vs adverse news */}
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+                        {adverseDetail.sourceType === "worldcheck" ? (<>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, color: "#4ade80", background: "rgba(74,222,128,0.10)", border: "1px solid rgba(74,222,128,0.22)", borderRadius: 20, padding: "2px 8px" }}>
+                            <ShieldCheck style={{ width: 10, height: 10 }} />WorldCheck
+                          </span>
+                          <span style={{ display: "inline-flex", fontSize: 11, fontWeight: 500, color: darkMode ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.50)", background: darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.05)", border: `1px solid ${darkMode ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.08)"}`, borderRadius: 20, padding: "2px 8px" }}>
+                            {adverseDetail.tags}
+                          </span>
+                        </>) : (<>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, color: "#f59e0b", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 20, padding: "2px 8px" }}>
+                            <AlertTriangle style={{ width: 10, height: 10 }} />Adverse News
+                          </span>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 500, color: darkMode ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.50)", background: darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.05)", border: `1px solid ${darkMode ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.08)"}`, borderRadius: 20, padding: "2px 8px" }}>
+                            Web crawl
+                          </span>
+                          {(adverseDetail.origIdx !== undefined ? ADVERSE_ARTICLES[adverseDetail.origIdx]?.topics : [])?.map((t, ti) => (
+                            <span key={ti} style={{ display: "inline-flex", fontSize: 11, fontWeight: 500, color: darkMode ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.50)", background: darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.05)", border: `1px solid ${darkMode ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.08)"}`, borderRadius: 20, padding: "2px 8px" }}>{t}</span>
+                          ))}
+                        </>)}
                       </div>
                       {/* Blurb */}
                       <div style={{ background: darkMode ? "linear-gradient(160deg, rgba(255,255,255,0.03) 0%, rgba(9,7,22,0.80) 70%) padding-box, linear-gradient(135deg, rgba(129,140,248,0.5) 0%, rgba(192,132,252,0.4) 50%, rgba(244,114,182,0.35) 100%) border-box" : "linear-gradient(160deg, rgba(255,255,255,0.95) 0%, rgba(240,236,255,0.80) 100%) padding-box, linear-gradient(135deg, rgba(129,140,248,0.5) 0%, rgba(192,132,252,0.4) 50%, rgba(244,114,182,0.35) 100%) border-box", border: "1px solid transparent", borderRadius: 8, padding: "10px 12px", marginBottom: 16, fontSize: 12, color: darkMode ? "rgba(255,255,255,0.65)" : "rgba(0,0,0,0.60)", lineHeight: 1.55 }}>
-                        This article mentions <strong style={{ color: darkMode ? "rgba(255,255,255,0.88)" : "rgba(0,0,0,0.82)", fontWeight: 600 }}>{selectedCase.customerName}</strong> in relation to asset freezes and alleged links to sanctioned entities.
+                        {adverseDetail.sourceType === "worldcheck"
+                          ? <>This record lists <strong style={{ color: darkMode ? "rgba(255,255,255,0.88)" : "rgba(0,0,0,0.82)", fontWeight: 600 }}>{selectedCase.customerName}</strong> as a sanctioned entity on the <strong style={{ color: darkMode ? "rgba(255,255,255,0.88)" : "rgba(0,0,0,0.82)", fontWeight: 600 }}>{adverseDetail.outlet}</strong>.</>
+                          : <>This article mentions <strong style={{ color: darkMode ? "rgba(255,255,255,0.88)" : "rgba(0,0,0,0.82)", fontWeight: 600 }}>{selectedCase.customerName}</strong> in relation to asset freezes and alleged links to sanctioned entities.</>
+                        }
                       </div>
                       {/* Matched Person */}
                       <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "#818cf8", marginBottom: 10 }}>Matched Person</p>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, padding: "10px 12px", borderRadius: 8, background: darkMode ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)", border: `1px solid ${darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.07)"}` }}>
-                        <div className={`flex items-center justify-center h-8 w-8 rounded-full text-xs font-bold flex-shrink-0 ${selectedCase.colorDark}`}>{selectedCase.initials}</div>
+                        <div className={`flex items-center justify-center h-8 w-8 rounded-full text-xs font-bold flex-shrink-0 ${darkMode ? selectedCase.colorDark : selectedCase.colorLight}`}>{selectedCase.initials}</div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 13, fontWeight: 600, color: darkMode ? "rgba(255,255,255,0.88)" : "rgba(0,0,0,0.82)" }}>{selectedCase.customerName}</div>
                           <div style={{ fontSize: 11, color: darkMode ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.40)", marginTop: 1 }}>↔ {selectedCase.watchlistName}</div>
                         </div>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: (comparisonNode?.matchScore ?? 0) >= 80 ? "#ef4444" : (comparisonNode?.matchScore ?? 0) >= 60 ? "#f59e0b" : "#6b7280", background: (comparisonNode?.matchScore ?? 0) >= 80 ? "rgba(239,68,68,0.12)" : (comparisonNode?.matchScore ?? 0) >= 60 ? "rgba(245,158,11,0.12)" : "rgba(107,114,128,0.12)", borderRadius: 20, padding: "3px 8px", flexShrink: 0 }}>{comparisonNode?.matchScore ?? selectedCase.confidence}% match</span>
+                        {(() => { const fields = comparisonNode?.matchFields ?? []; const matched = fields.filter(f => f.match).length; const total = fields.length; const score = comparisonNode?.matchScore ?? selectedCase.confidence; const col = score >= 80 ? "#ef4444" : score >= 60 ? "#f59e0b" : "#6b7280"; const bg = score >= 80 ? "rgba(239,68,68,0.12)" : score >= 60 ? "rgba(245,158,11,0.12)" : "rgba(107,114,128,0.12)"; return <span style={{ fontSize: 11, fontWeight: 600, color: col, background: bg, borderRadius: 20, padding: "3px 9px", flexShrink: 0, whiteSpace: "nowrap" }}>{total ? `${matched}/${total} identifiers` : ""}{total ? " • " : ""}{score}% similarity</span>; })()}
                       </div>
                       {/* Identifiers Discovered */}
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
@@ -3381,28 +3731,44 @@ export default function Dashboard() {
                         ))}
                       </div>
                       <div style={{ marginBottom: 20 }} />
-                      {/* Matched in Article */}
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                        <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "#818cf8", margin: 0 }}>Matched in Article</p>
-                        <span style={{ fontSize: 11, color: darkMode ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.40)" }}>2 key excerpts</span>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
-                        {[
-                          { para: "Paragraph 3", text: `...authorities identified `, highlighted: selectedCase.customerName, after: ` as an associate of Horizon Directors Ltd, a company linked to sanctioned individuals...` },
-                          { para: "Paragraph 6", text: `Assets belonging to `, highlighted: selectedCase.customerName, after: ` and related entities have been frozen under the latest round of sanctions...` },
-                        ].map((ex, i) => (
-                          <div key={i} style={{ borderRadius: 8, border: `1px solid ${darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.07)"}`, padding: "10px 12px", background: darkMode ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.02)" }}>
-                            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
-                              <span style={{ fontSize: 10, color: darkMode ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.35)" }}>{ex.para}</span>
+                      {adverseDetail.sourceType === "worldcheck" ? (<>
+                        {/* Matched Fields — for WorldCheck records */}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "#818cf8", margin: 0 }}>Matched Fields</p>
+                          <span style={{ fontSize: 11, color: darkMode ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.40)" }}>{comparisonNode?.matchFields?.filter(f => f.match).length ?? 0} matched</span>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 0, marginBottom: 20 }}>
+                          {(comparisonNode?.matchFields?.filter(f => f.match) ?? []).slice(0, 5).map((f, fi, arr) => (
+                            <div key={fi} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, alignItems: "center", padding: "6px 0", borderBottom: fi < arr.length - 1 ? `1px solid ${darkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)"}` : "none" }}>
+                              <span style={{ fontSize: 12, fontWeight: 600, color: darkMode ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.50)" }}>{f.field}</span>
+                              <span style={{ fontSize: 12, color: darkMode ? "rgba(255,255,255,0.80)" : "rgba(0,0,0,0.75)" }}>{f.watchlist}</span>
                             </div>
-                            <p style={{ fontSize: 12, color: darkMode ? "rgba(255,255,255,0.70)" : "rgba(0,0,0,0.65)", lineHeight: 1.55, margin: 0 }}>
-                              {ex.text}
-                              <mark style={{ background: "rgba(245,158,11,0.35)", color: "inherit", borderRadius: 2, padding: "0 2px" }}>{ex.highlighted}</mark>
-                              {ex.after}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
+                          ))}
+                        </div>
+                      </>) : (<>
+                        {/* Matched in Article — for adverse news */}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "#818cf8", margin: 0 }}>Matched in Article</p>
+                          <span style={{ fontSize: 11, color: darkMode ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.40)" }}>2 key excerpts</span>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+                          {[
+                            { para: "Paragraph 3", text: `...authorities identified `, highlighted: selectedCase.customerName, after: ` as an associate of Horizon Directors Ltd, a company linked to sanctioned individuals...` },
+                            { para: "Paragraph 6", text: `Assets belonging to `, highlighted: selectedCase.customerName, after: ` and related entities have been frozen under the latest round of sanctions...` },
+                          ].map((ex, i) => (
+                            <div key={i} style={{ borderRadius: 8, border: `1px solid ${darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.07)"}`, padding: "10px 12px", background: darkMode ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.02)" }}>
+                              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+                                <span style={{ fontSize: 10, color: darkMode ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.35)" }}>{ex.para}</span>
+                              </div>
+                              <p style={{ fontSize: 12, color: darkMode ? "rgba(255,255,255,0.70)" : "rgba(0,0,0,0.65)", lineHeight: 1.55, margin: 0 }}>
+                                {ex.text}
+                                <mark style={{ background: "rgba(245,158,11,0.35)", color: "inherit", borderRadius: 2, padding: "0 2px" }}>{ex.highlighted}</mark>
+                                {ex.after}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </>)}
                     </div>
                     {/* View full article */}
                     <div style={{ padding: "12px 16px", borderTop: `1px solid ${darkMode ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)"}`, flexShrink: 0 }}>
@@ -3436,26 +3802,37 @@ export default function Dashboard() {
                   </div>
                   {/* Flag indicators — icon + label, no background */}
                   {(() => {
-                    const sub = (comparisonNode.sublabel ?? "").toLowerCase();
                     type FlagEntry = { label: string; Icon: React.ElementType; color: string };
-                    const flagList: FlagEntry[] = [];
-                    const sanctionLabel = sub.includes("ofac") || sub.includes("sdn") ? "Sanctioned by OFAC"
-                      : sub.includes("un sanction") || sub === "un" ? "Sanctioned by UN"
-                      : sub.includes("eu sanction") ? "Sanctioned by EU"
-                      : sub.includes("world bank") ? "Sanctioned by World Bank"
-                      : (sub.includes("sanction") || sub.includes("target") || sub.includes("blocked")) ? "Sanctioned"
-                      : null;
-                    if (sanctionLabel) flagList.push({ label: sanctionLabel, Icon: XCircle, color: "#f87171" });
-                    if (sub.includes("un pep") || sub.includes("eu pep")) {
-                      flagList.push({ label: "Foreign PEP", Icon: Landmark, color: "#a78bfa" });
-                      flagList.push({ label: "Foreign PEP RCA", Icon: Landmark, color: "#a78bfa" });
-                    } else if (sub.includes("pep")) {
-                      flagList.push({ label: "Foreign PEP", Icon: Landmark, color: "#a78bfa" });
-                      flagList.push({ label: "Foreign PEP RCA", Icon: Landmark, color: "#a78bfa" });
+                    let flagList: FlagEntry[] = [];
+
+                    if (comparisonNode.classifications?.length) {
+                      // Use explicit classifications data
+                      flagList = comparisonNode.classifications.map(label => {
+                        const l = label.toLowerCase();
+                        if (l.includes("sanction"))     return { label, Icon: XCircle,   color: "#f87171" };
+                        if (l.includes("enforcement"))  return { label, Icon: Gavel,    color: "#fb923c" };
+                        if (l.includes("pep rca"))      return { label, Icon: Landmark,  color: "#818cf8" };
+                        return                                 { label, Icon: Landmark,  color: "#a78bfa" }; // PEP
+                      });
+                    } else {
+                      // Fallback: derive from sublabel
+                      const sub = (comparisonNode.sublabel ?? "").toLowerCase();
+                      const sanctionLabel = sub.includes("ofac") || sub.includes("sdn") ? "Sanctioned by OFAC"
+                        : sub.includes("un sanction") || sub === "un" ? "Sanctioned by UN"
+                        : sub.includes("eu sanction") ? "Sanctioned by EU"
+                        : sub.includes("world bank") ? "Sanctioned by World Bank"
+                        : (sub.includes("sanction") || sub.includes("target") || sub.includes("blocked")) ? "Sanctioned"
+                        : null;
+                      if (sanctionLabel) flagList.push({ label: sanctionLabel, Icon: XCircle, color: "#f87171" });
+                      if (sub.includes("pep")) {
+                        flagList.push({ label: "Foreign PEP",     Icon: Landmark, color: "#a78bfa" });
+                        flagList.push({ label: "Foreign PEP RCA", Icon: Landmark, color: "#818cf8" });
+                      }
+                      if (sub.includes("interpol") || sub.includes("adverse") || sub.includes("world bank")) {
+                        flagList.push({ label: "Legal Enforcement Action", Icon: Gavel, color: "#fb923c" });
+                      }
                     }
-                    if (sub.includes("interpol") || sub.includes("adverse") || sub.includes("world bank")) {
-                      flagList.push({ label: "Legal Enforcement Action", Icon: Wrench, color: "#fb923c" });
-                    }
+
                     if (flagList.length === 0) return null;
                     return (
                       <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", marginTop: 6, marginBottom: 2 }}>
@@ -3485,9 +3862,13 @@ export default function Dashboard() {
                             : (() => {
                                 const fields = comparisonNode.matchFields ?? [];
                                 const matched = fields.filter(f => f.match).length;
+                                const secMatched = fields.filter(f => SECONDARY_FIELDS.has(f.field) && f.match).length;
+                                const level = secMatched >= 7 ? "HIGH" : "LOW";
+                                const col = matched === fields.length ? "#4ade80" : matched > 0 ? "#f59e0b" : "#f87171";
+                                const bg  = matched === fields.length ? "rgba(74,222,128,0.12)" : matched > 0 ? "rgba(245,158,11,0.12)" : "rgba(248,113,113,0.12)";
                                 return (
-                                  <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: 0, textTransform: "none", color: matched === fields.length ? "#4ade80" : matched > 0 ? "#f59e0b" : "#f87171", background: matched === fields.length ? "rgba(74,222,128,0.12)" : matched > 0 ? "rgba(245,158,11,0.12)" : "rgba(248,113,113,0.12)", borderRadius: 4, padding: "1px 5px" }}>
-                                    {matched}/{fields.length} match
+                                  <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: 0, textTransform: "none", color: col, background: bg, borderRadius: 4, padding: "1px 6px" }}>
+                                    {level} · {matched}/{fields.length} match
                                   </span>
                                 );
                               })()
@@ -3550,7 +3931,7 @@ export default function Dashboard() {
                         <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           Found Sources
                           <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: 0, textTransform: "none", color: "#818cf8", background: "rgba(129,140,248,0.12)", borderRadius: 4, padding: "1px 5px" }}>
-                            {adverseSearchState === 'complete' ? 4 : 2}
+                            {2 + Object.values(adverseArticleStatuses).filter(s => s === 'added').length + adverseAddingSet.size}
                           </span>
                         </span>
                       </AccordionTrigger>
@@ -3559,26 +3940,23 @@ export default function Dashboard() {
                           {/* WorldCheck verified sources */}
                           {(() => {
                             const srcNodes = graphNodes.filter(n => n.nodeType === "attribute" && n.sublabel === "WorldCheck" && n.attrIcon === "source");
-                            return [
-                              { label: "OFAC SDN List", date: "2024-11-03", excerpt: "Listed under Executive Order 13599 — Iranian government-related entity." },
-                              { label: "UN Security Council Consolidated List", date: "2023-07-18", excerpt: "Subject to travel ban and asset freeze per UNSC Resolution 1718." },
-                            ].map((src, i, arr) => (
-                            <div key={i} onClick={() => { const n = srcNodes[i]; if (n) setActiveAttrLabel(n.label); }} style={{ display: "flex", gap: 10, padding: "10px 0", borderBottom: `1px solid ${darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}`, cursor: "pointer" }}>
+                            return WORLDCHECK_SOURCE_DETAILS.map((src, i) => (
+                            <div key={i} onClick={() => { const n = srcNodes[i]; if (n) setActiveAttrLabel(n.label); setAdverseArticleIdx(i); setAdverseDetail(WORLDCHECK_SOURCE_DETAILS[i]); setReviewState(s => ({ ...s, adverseNewsReviewed: true })); }} style={{ display: "flex", gap: 10, padding: "10px 0", borderBottom: `1px solid ${darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}`, cursor: "pointer" }}>
                               <ShieldCheck style={{ width: 14, height: 14, flexShrink: 0, marginTop: 1, color: "#4ade80" }} />
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
                                   <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", color: "#818cf8" }}>WorldCheck</span>
                                   <span style={{ marginLeft: "auto", fontSize: 10, color: darkMode ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.35)", flexShrink: 0 }}>{src.date}</span>
                                 </div>
-                                <div style={{ fontSize: 11, fontWeight: 600, color: darkMode ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.80)", marginBottom: 2 }}>{src.label}</div>
-                                <div style={{ fontSize: 10, color: darkMode ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.45)", lineHeight: 1.5 }}>{src.excerpt}</div>
+                                <div style={{ fontSize: 11, fontWeight: 600, color: darkMode ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.80)", marginBottom: 3 }}>{src.outlet}</div>
+                                <div style={{ fontSize: 10, color: darkMode ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.40)" }}>{src.tags}</div>
                               </div>
                             </div>
                           ));
                         })()}
-                          {/* Web crawl adverse news — only shown after search triggered */}
-                          {adverseSearchState === 'loading' && [0, 1].map(i => (
-                            <div key={i} style={{ display: "flex", gap: 10, padding: "10px 0", borderBottom: i === 0 ? `1px solid ${darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` : "none" }}>
+                          {/* Skeleton row while an article is being added */}
+                          {[...adverseAddingSet].map(idx => (
+                            <div key={`adding-${idx}`} style={{ display: "flex", gap: 10, padding: "10px 0", borderTop: `1px solid ${darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` }}>
                               <div className="ai-skeleton" style={{ width: 13, height: 13, flexShrink: 0, marginTop: 2, borderRadius: "50%" }} />
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
@@ -3590,8 +3968,9 @@ export default function Dashboard() {
                               </div>
                             </div>
                           ))}
-                          {adverseSearchState === 'complete' && ADVERSE_ARTICLES.map((art, i, arr) => (
-                            <div key={i} onClick={() => { setAdverseArticleIdx(i); setAdverseDetail(art); setReviewState(s => ({ ...s, adverseNewsReviewed: true })); }} style={{ display: "flex", gap: 10, padding: i < arr.length - 1 ? "10px 0" : "10px 0 0", borderBottom: i < arr.length - 1 ? `1px solid ${darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` : "none", cursor: "pointer" }}>
+                          {/* Only show articles explicitly added to evidence */}
+                          {ADVERSE_ARTICLES.map((art, i) => adverseArticleStatuses[i] === 'added' ? (
+                            <div key={i} onClick={() => { const pos = traversableSourceItems.findIndex(s => s.sourceType === 'adverse' && (s as { origIdx?: number }).origIdx === i); setAdverseArticleIdx(pos >= 0 ? pos : WORLDCHECK_SOURCE_DETAILS.length); setAdverseDetail({ ...art, sourceType: 'adverse', origIdx: i }); setReviewState(s => ({ ...s, adverseNewsReviewed: true })); }} style={{ display: "flex", gap: 10, padding: "10px 0", borderTop: `1px solid ${darkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}`, cursor: "pointer" }}>
                               <AlertTriangle style={{ width: 13, height: 13, flexShrink: 0, marginTop: 2, color: "#f59e0b" }} />
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
@@ -3599,11 +3978,11 @@ export default function Dashboard() {
                                   <span style={{ fontSize: 10, color: darkMode ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.35)" }}>· Web crawl</span>
                                   <span style={{ marginLeft: "auto", fontSize: 10, color: darkMode ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.35)", flexShrink: 0 }}>{art.date}</span>
                                 </div>
-                                <div style={{ fontSize: 11, fontWeight: 600, color: darkMode ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.80)", marginBottom: 2, lineHeight: 1.45 }}>{art.headline}</div>
-                                <div style={{ fontSize: 10, color: darkMode ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.40)" }}>{art.outlet}</div>
+                                <div style={{ fontSize: 11, fontWeight: 600, color: darkMode ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.80)", marginBottom: 3, lineHeight: 1.45 }}>{art.headline}</div>
+                                <div style={{ fontSize: 10, color: darkMode ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.40)" }}>{art.topics.join(' • ')}</div>
                               </div>
                             </div>
-                          ))}
+                          ) : null)}
                         </div>
                       </AccordionContent>
                     </AccordionItem>
@@ -3806,38 +4185,68 @@ export default function Dashboard() {
                         {/* Comment */}
                         <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 5, color: darkMode ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.32)" }}>Comment</p>
                         <p style={{ fontSize: 12, lineHeight: 1.6, color: darkMode ? "rgba(255,255,255,0.65)" : "rgba(0,0,0,0.65)", margin: 0 }}>{submittedComment}</p>
-                        {nextPersonNode && (<>
-                          {sep}
-                          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                            <BorderBeamButton
-                              type="button"
-                              variant="outline"
-                              beamSize="sm"
-                              colorVariant="colorful"
-                              active={true}
-                              onClick={() => {
-                                setAdverseDetail(null);
-                                setComparisonNode(nextPersonNode);
-                                const nextIsAuto = nextPersonNode.risk === "medium" || nextPersonNode.risk === "low" || forcedAutoDisposed.has(nextPersonNode.label);
-                                if (nextIsAuto) {
-                                  setDispositionChoice("false-positive");
-                                  setTrueHitStep(false);
-                                  setDispositionSubmitted(false);
-                                  setDispositionComment(`Match score of ${nextPersonNode.matchScore ?? 0}% falls below the review threshold. Name similarity detected against ${nextPersonNode.sublabel ?? "the watchlist"}, however date of birth, nationality, and identity document number do not align with the customer's verified records. No beneficial ownership or transactional nexus identified. Assessed as a false positive — no further action required.`);
-                                } else {
-                                  setDispositionChoice(null);
-                                  setDispositionComment("");
-                                  setDispositionSubmitted(false);
-                                  setTrueHitStep(false);
-                                }
-                              }}
-                              style={{ fontSize: 12, padding: "7px 14px", display: "inline-flex", alignItems: "center", gap: 6, background: darkMode ? "rgba(9,7,22,0.92)" : "rgba(250,249,255,0.95)", color: darkMode ? "rgba(255,255,255,0.88)" : "rgba(0,0,0,0.80)" }}
-                            >
-                              Next Watchlist Record
-                              <ArrowRight className="h-3.5 w-3.5" />
-                            </BorderBeamButton>
-                          </div>
-                        </>)}
+                        {(() => {
+                          const allSubmitted = cNodes.every(n => submittedNodes.has(n.label));
+                          const firstTrueHitLabel = allSubmitted
+                            ? [...submittedNodes.entries()].find(([, v]) => v !== "false-positive")?.[0] ?? null
+                            : null;
+                          const firstTrueHitNode = firstTrueHitLabel
+                            ? cNodes.find(n => n.label === firstTrueHitLabel) ?? null
+                            : null;
+
+                          if (nextPersonNode) return (<>
+                            {sep}
+                            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                              <BorderBeamButton
+                                type="button" variant="outline" beamSize="sm" colorVariant="colorful" active={true}
+                                onClick={() => {
+                                  setAdverseDetail(null);
+                                  setComparisonNode(nextPersonNode);
+                                  const nextIsAuto = nextPersonNode.risk === "medium" || nextPersonNode.risk === "low" || forcedAutoDisposed.has(nextPersonNode.label);
+                                  if (nextIsAuto) {
+                                    setDispositionChoice("false-positive");
+                                    setTrueHitStep(false);
+                                    setDispositionSubmitted(false);
+                                    setDispositionComment(`Match score of ${nextPersonNode.matchScore ?? 0}% falls below the review threshold. Name similarity detected against ${nextPersonNode.sublabel ?? "the watchlist"}, however date of birth, nationality, and identity document number do not align with the customer's verified records. No beneficial ownership or transactional nexus identified. Assessed as a false positive — no further action required.`);
+                                  } else {
+                                    setDispositionChoice(null);
+                                    setDispositionComment("");
+                                    setDispositionSubmitted(false);
+                                    setTrueHitStep(false);
+                                  }
+                                }}
+                                style={{ fontSize: 12, padding: "7px 14px", display: "inline-flex", alignItems: "center", gap: 6, background: darkMode ? "rgba(9,7,22,0.92)" : "rgba(250,249,255,0.95)", color: darkMode ? "rgba(255,255,255,0.88)" : "rgba(0,0,0,0.80)" }}
+                              >
+                                Next Watchlist Record
+                                <ArrowRight className="h-3.5 w-3.5" />
+                              </BorderBeamButton>
+                            </div>
+                          </>);
+
+                          if (firstTrueHitNode) return (<>
+                            {sep}
+                            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                              <BorderBeamButton
+                                type="button" variant="outline" beamSize="sm" colorVariant="colorful" active={true}
+                                onClick={() => {
+                                  setAdverseDetail(null);
+                                  setComparisonNode(firstTrueHitNode);
+                                  setSubmittedChoice(submittedNodes.get(firstTrueHitNode.label) ?? null);
+                                  setDispositionChoice(submittedNodes.get(firstTrueHitNode.label) ?? null);
+                                  setDispositionSubmitted(true);
+                                  setIsChangingDisposition(false);
+                                  setCaseTab("caselog");
+                                }}
+                                style={{ fontSize: 12, padding: "7px 14px", display: "inline-flex", alignItems: "center", gap: 6, background: darkMode ? "rgba(9,7,22,0.92)" : "rgba(250,249,255,0.95)", color: darkMode ? "rgba(255,255,255,0.88)" : "rgba(0,0,0,0.80)" }}
+                              >
+                                View Case Log
+                                <ArrowRight className="h-3.5 w-3.5" />
+                              </BorderBeamButton>
+                            </div>
+                          </>);
+
+                          return null;
+                        })()}
                       </div>
                     );
                   })() : (() => {
@@ -3860,10 +4269,27 @@ export default function Dashboard() {
                       setSubmittedComment(dispositionComment);
                       setDispositionSubmitted(true);
                       setIsChangingDisposition(false);
+                      setCaseLogUnread(true);
 
                       // Track this node as actual disposed
                       const newSubmittedMap = new Map(submittedNodes).set(comparisonNode!.label, dispositionChoice);
                       setSubmittedNodes(newSubmittedMap);
+
+                      // Auto-navigate to true hit node when last disposition is submitted
+                      const cNodesAll = (CASE_NODES[selectedCaseId as number] ?? []).filter(n => n.nodeType !== "attribute");
+                      const allNowSubmitted = cNodesAll.every(n => newSubmittedMap.has(n.label));
+                      if (allNowSubmitted) {
+                        const trueHitLabelNow = [...newSubmittedMap.entries()].find(([, v]) => v !== "false-positive")?.[0] ?? null;
+                        const trueHitNodeNow = trueHitLabelNow ? cNodesAll.find(n => n.label === trueHitLabelNow) ?? null : null;
+                        if (trueHitNodeNow && trueHitNodeNow.label !== comparisonNode?.label) {
+                          setAdverseDetail(null);
+                          setComparisonNode(trueHitNodeNow);
+                          setSubmittedChoice(newSubmittedMap.get(trueHitNodeNow.label) ?? null);
+                          setDispositionChoice(newSubmittedMap.get(trueHitNodeNow.label) ?? null);
+                          setDispositionSubmitted(true);
+                          setIsChangingDisposition(false);
+                        }
+                      }
 
                       // If true hit: push all other critical/high nodes to ring 3
                       const newForcedAuto = new Set(forcedAutoDisposed);
@@ -3954,13 +4380,8 @@ export default function Dashboard() {
               {caseTab === "caselog" && (() => {
                 const personNodes = caseNodes.filter(n => n.nodeType === "person");
                 const getCaseType = (n: typeof personNodes[0]) => {
-                  const fields = n.matchFields ?? [];
-                  const matched = fields.filter(f => f.match);
-                  const mismatched = fields.filter(f => !f.match);
-                  if (matched.length === 0) return "No Primary Match";
-                  if (mismatched.length === 0) return "Full Primary Match";
-                  const mismatchNames = mismatched.map(f => f.field).join(", ");
-                  return `Partial Match — ${mismatchNames} differ`;
+                  const secondaryMatched = (n.matchFields ?? []).filter(f => SECONDARY_FIELDS.has(f.field) && f.match).length;
+                  return secondaryMatched >= 7 ? "High" : "Low";
                 };
                 const getDispositionLabel = (nodeLabel: string) => {
                   const d = submittedNodes.get(nodeLabel);
@@ -3987,94 +4408,188 @@ export default function Dashboard() {
                 const textMain    = darkMode ? "rgba(255,255,255,0.82)" : "rgba(0,0,0,0.80)";
                 const textSub     = darkMode ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.55)";
 
+                const colHeaders = ["Alert ID", "Watchlist Name", "Case Type", "Identifiers", "Score", "Disposition", "Last Updated", "Created", "Party Key", "Key Methodology"];
+                const STICKY_NAME_LEFT = 0;
+
+                const startColResize = (colIdx: number, e: React.MouseEvent) => {
+                  e.preventDefault();
+                  const startX = e.clientX;
+                  const startWidth = caseLogColWidths[colIdx];
+                  const onMove = (me: MouseEvent) => {
+                    setCaseLogColWidths(prev => {
+                      const next = [...prev];
+                      next[colIdx] = Math.max(40, startWidth + (me.clientX - startX));
+                      return next;
+                    });
+                  };
+                  const onUp = () => {
+                    document.removeEventListener("mousemove", onMove);
+                    document.removeEventListener("mouseup", onUp);
+                  };
+                  document.addEventListener("mousemove", onMove);
+                  document.addEventListener("mouseup", onUp);
+                };
+
+                const handleSort = (col: string) => {
+                  if (caseLogSortCol === col) {
+                    setCaseLogSortDir(d => d === "asc" ? "desc" : "asc");
+                  } else {
+                    setCaseLogSortCol(col);
+                    setCaseLogSortDir("desc");
+                  }
+                };
+
+                // Per-row data derived before sorting
+                const rowData = personNodes.map((n, idx) => {
+                  const disp        = getDispositionLabel(n.label);
+                  const fields      = n.matchFields ?? [];
+                  const matched     = fields.filter(f => f.match).length;
+                  const alertId     = `A${1000 + (selectedCaseId ?? 1) * 100 + idx}`;
+                  const partyKey    = ["337329833","503161061","366976200","241899312","374349146","615926766"][idx % 6];
+                  const createdDate = ["2026-09-08 09:14","2026-09-08 09:15","2026-09-08 09:17","2026-09-08 09:20","2026-09-08 09:22"][idx % 5];
+                  const lastUpdated = disp ? `${new Date().toLocaleDateString("en-CA")} ${submittedAt || createdDate.slice(11)}` : createdDate;
+                  return { n, idx, disp, fields, matched, alertId, partyKey, createdDate, lastUpdated };
+                });
+
+                const sortedRows = [...rowData].sort((a, b) => {
+                  let va: string | number = "", vb: string | number = "";
+                  switch (caseLogSortCol) {
+                    case "Alert ID":       va = a.alertId;       vb = b.alertId; break;
+                    case "Watchlist Name": va = a.n.label;       vb = b.n.label; break;
+                    case "Case Type":      va = getCaseType(a.n); vb = getCaseType(b.n); break;
+                    case "Identifiers":    va = a.fields.length ? a.matched / a.fields.length : -1; vb = b.fields.length ? b.matched / b.fields.length : -1; break;
+                    case "Score":          va = a.n.matchScore ?? 0; vb = b.n.matchScore ?? 0; break;
+                    case "Disposition":    va = a.disp?.label ?? ""; vb = b.disp?.label ?? ""; break;
+                    case "Last Updated":   va = a.lastUpdated;   vb = b.lastUpdated; break;
+                    case "Created":        va = a.createdDate;   vb = b.createdDate; break;
+                    case "Party Key":      va = a.partyKey;      vb = b.partyKey; break;
+                    default: return 0;
+                  }
+                  const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+                  return caseLogSortDir === "asc" ? cmp : -cmp;
+                });
+
+                // Table container has an explicit bg so we can use the same value for sticky cells
+                const tableBg     = darkMode ? "rgb(16,13,36)"   : "rgb(246,245,254)";
+                const stickyHdrBg = darkMode ? "rgb(20,17,40)"   : "rgb(243,242,251)";  // tableBg + headerBg overlay
+                const stickyActBg = darkMode ? "rgb(25,22,54)"   : "rgb(239,238,254)";  // tableBg + active overlay
+                const stickyHovBg = darkMode ? "rgb(20,17,40)"   : "rgb(243,242,249)";  // tableBg + hover overlay
+                const stickyShad  = `2px 0 6px -2px ${darkMode ? "rgba(0,0,0,0.40)" : "rgba(0,0,0,0.10)"}`;
+
                 return (
                   <div className="absolute inset-0 overflow-auto" style={{ zIndex: 1 }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, tableLayout: "fixed" }}>
+                    <table style={{ width: "max-content", minWidth: "100%", borderCollapse: "collapse", fontSize: 12, tableLayout: "fixed" }}>
                       <colgroup>
-                        <col style={{ width: 160 }} />
-                        <col style={{ width: 110 }} />
-                        <col style={{ width: 72 }} />
-                        <col style={{ width: 80 }} />
-                        <col style={{ width: 80 }} />
-                        <col style={{ width: 90 }} />
-                        <col />
+                        {caseLogColWidths.map((w, ci) => <col key={ci} style={{ width: w }} />)}
                       </colgroup>
                       <thead>
-                        <tr style={{ background: headerBg, borderBottom: `1px solid ${borderColor}`, position: "sticky", top: 0, zIndex: 2 }}>
-                          {["Watchlist Name", "Case Type", "Alert ID", "Identifiers", "Score", "Disposition", "Key Methodology"].map(h => (
-                            <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: textDim, whiteSpace: "nowrap" }}>{h}</th>
-                          ))}
+                        <tr style={{ background: stickyHdrBg, borderBottom: `1px solid ${borderColor}`, position: "sticky", top: 0, zIndex: 4 }}>
+                          {colHeaders.map((h, hi) => {
+                            const isSorted = caseLogSortCol === h;
+                            const isNameCol = hi === 1;
+                            const SortIcon = isSorted ? (caseLogSortDir === "asc" ? ArrowUp : ArrowDown) : ChevronsUpDown;
+                            return (
+                              <th key={h} onClick={() => handleSort(h)} style={{
+                                padding: "9px 12px", textAlign: "left", fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
+                                color: textDim,
+                                whiteSpace: "nowrap", position: isNameCol ? "sticky" : "relative", left: isNameCol ? STICKY_NAME_LEFT : undefined,
+                                zIndex: isNameCol ? 5 : undefined,
+                                background: isNameCol ? stickyHdrBg : "transparent",
+                                cursor: "pointer", userSelect: "none",
+                                boxShadow: isNameCol ? `2px 0 6px -2px ${darkMode ? "rgba(0,0,0,0.40)" : "rgba(0,0,0,0.10)"}` : undefined,
+                              }}>
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                  {h}
+                                  <SortIcon style={{ width: 10, height: 10, opacity: isSorted ? 0.9 : 0.4, flexShrink: 0 }} />
+                                </span>
+                                {hi < colHeaders.length - 1 && (
+                                  <div
+                                    onMouseDown={e => { e.stopPropagation(); startColResize(hi, e); }}
+                                    style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 6, cursor: "col-resize", display: "flex", alignItems: "center", justifyContent: "center" }}
+                                    onClick={e => e.stopPropagation()}
+                                  >
+                                    <div style={{ width: 1, height: "60%", background: darkMode ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.10)" }} />
+                                  </div>
+                                )}
+                              </th>
+                            );
+                          })}
                         </tr>
                       </thead>
                       <tbody>
-                        {personNodes.map((n, idx) => {
-                          const disp     = getDispositionLabel(n.label);
-                          const fields   = n.matchFields ?? [];
-                          const matched  = fields.filter(f => f.match).length;
-                          const alertId  = `A${1000 + (selectedCaseId ?? 1) * 100 + idx}`;
-                          const isActive = comparisonNode?.label === n.label;
-                          const riskDot  = n.risk === "critical" ? "#ef4444" : n.risk === "high" ? "#f59e0b" : n.risk === "medium" ? "#a3a3a3" : "#6b7280";
+                        {sortedRows.map(({ n, disp, fields, matched, alertId, partyKey, createdDate, lastUpdated }) => {
+                          const isActive   = comparisonNode?.label === n.label;
+                          const rowBg      = isActive ? stickyActBg : tableBg;
                           return (
                             <tr
                               key={n.label}
                               onClick={() => { setComparisonNode(n); setCaseTab("overview"); }}
-                              style={{
-                                cursor: "pointer",
-                                borderBottom: `1px solid ${borderColor}`,
-                                background: isActive ? (darkMode ? "rgba(99,102,241,0.10)" : "rgba(99,102,241,0.06)") : "transparent",
-                                transition: "background 0.12s",
+                              style={{ cursor: "pointer", borderBottom: `1px solid ${borderColor}`, background: rowBg, transition: "background 0.12s" }}
+                              onMouseEnter={e => {
+                                if (!isActive) {
+                                  const tr = e.currentTarget as HTMLElement;
+                                  tr.style.background = stickyHovBg;
+                                  (tr.children[1] as HTMLElement).style.background = stickyHovBg;
+                                }
                               }}
-                              onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = rowHoverBg; }}
-                              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isActive ? (darkMode ? "rgba(99,102,241,0.10)" : "rgba(99,102,241,0.06)") : "transparent"; }}
+                              onMouseLeave={e => {
+                                const tr = e.currentTarget as HTMLElement;
+                                tr.style.background = rowBg;
+                                (tr.children[1] as HTMLElement).style.background = rowBg;
+                              }}
                             >
-                              {/* Watchlist Name */}
-                              <td style={{ padding: "10px 12px" }}>
-                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: riskDot, flexShrink: 0 }} />
-                                  <div>
-                                    <div style={{ fontWeight: 600, color: textMain, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.label}</div>
-                                    <div style={{ fontSize: 10, color: textDim, marginTop: 1 }}>{n.sublabel}</div>
-                                  </div>
+                              {/* Alert ID */}
+                              <td style={{ padding: "10px 8px", overflow: "hidden" }}>
+                                <span style={{ fontFamily: "monospace", fontSize: 11, color: darkMode ? "rgba(129,140,248,0.85)" : "rgba(79,70,229,0.80)", background: darkMode ? "rgba(99,102,241,0.12)" : "rgba(99,102,241,0.08)", borderRadius: 4, padding: "2px 5px" }}>{alertId}</span>
+                              </td>
+                              {/* Watchlist Name — sticky */}
+                              <td style={{ padding: "10px 12px", overflow: "hidden", position: "sticky", left: STICKY_NAME_LEFT, zIndex: 1, background: rowBg, boxShadow: stickyShad }}>
+                                <div>
+                                  <div style={{ fontWeight: 600, color: textMain, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.label}</div>
+                                  <div style={{ fontSize: 10, color: textDim, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.sublabel}</div>
                                 </div>
                               </td>
                               {/* Case Type */}
-                              <td style={{ padding: "10px 12px", color: textSub, overflow: "hidden" }}>
-                                <span style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{getCaseType(n)}</span>
+                              <td style={{ padding: "10px 12px", overflow: "hidden" }}>
+                                {(() => {
+                                  const ct = getCaseType(n);
+                                  const isHigh = ct === "High";
+                                  const ctColor = isHigh ? (darkMode ? "rgba(251,146,60,0.90)" : "rgb(194,65,12)") : (darkMode ? "rgba(167,243,208,0.80)" : "rgb(21,128,61)");
+                                  const ctBg    = isHigh ? (darkMode ? "rgba(251,146,60,0.12)" : "rgba(254,215,170,0.60)") : (darkMode ? "rgba(74,222,128,0.10)" : "rgba(187,247,208,0.60)");
+                                  return <span style={{ fontSize: 10, fontWeight: 700, color: ctColor, background: ctBg, borderRadius: 4, padding: "2px 7px", whiteSpace: "nowrap" }}>{ct}</span>;
+                                })()}
                               </td>
-                              {/* Alert ID */}
-                              <td style={{ padding: "10px 12px" }}>
-                                <span style={{ fontFamily: "monospace", fontSize: 11, color: darkMode ? "rgba(129,140,248,0.85)" : "rgba(79,70,229,0.80)", background: darkMode ? "rgba(99,102,241,0.12)" : "rgba(99,102,241,0.08)", borderRadius: 4, padding: "2px 5px" }}>{alertId}</span>
-                              </td>
-                              {/* Identifiers matched */}
-                              <td style={{ padding: "10px 12px", color: fields.length ? (matched === fields.length ? "#4ade80" : matched > 0 ? "#f59e0b" : "#f87171") : textDim }}>
+                              {/* Identifiers */}
+                              <td style={{ padding: "10px 12px", overflow: "hidden", color: fields.length ? (matched === fields.length ? "#4ade80" : matched > 0 ? "#f59e0b" : "#f87171") : textDim }}>
                                 {fields.length ? `${matched}/${fields.length}` : "N/A"}
                               </td>
                               {/* Score */}
-                              <td style={{ padding: "10px 12px" }}>
-                                <span style={{ fontWeight: 700, color: (n.matchScore ?? 0) >= 85 ? "#f87171" : (n.matchScore ?? 0) >= 65 ? "#f59e0b" : "#9ca3af" }}>
-                                  {n.matchScore ?? "—"}%
-                                </span>
+                              <td style={{ padding: "10px 12px", overflow: "hidden" }}>
+                                <span style={{ fontWeight: 700, color: (n.matchScore ?? 0) >= 85 ? "#f87171" : (n.matchScore ?? 0) >= 65 ? "#f59e0b" : "#9ca3af" }}>{n.matchScore ?? "—"}%</span>
                               </td>
                               {/* Disposition */}
-                              <td style={{ padding: "10px 12px" }}>
-                                {disp
-                                  ? <span style={{ fontSize: 10, fontWeight: 600, color: disp.color, background: disp.bg, borderRadius: 4, padding: "2px 6px", whiteSpace: "nowrap" }}>{disp.label}</span>
-                                  : <span style={{ fontSize: 10, color: textDim }}>Pending</span>
-                                }
+                              <td style={{ padding: "10px 12px", overflow: "hidden" }}>
+                                {disp ? <span style={{ fontSize: 10, fontWeight: 600, color: disp.color, background: disp.bg, borderRadius: 4, padding: "2px 6px", whiteSpace: "nowrap" }}>{disp.label}</span>
+                                      : <span style={{ fontSize: 10, color: textDim }}>Pending</span>}
+                              </td>
+                              {/* Last Updated */}
+                              <td style={{ padding: "10px 12px", overflow: "hidden", color: textSub, whiteSpace: "nowrap", fontSize: 11 }}>{lastUpdated}</td>
+                              {/* Created */}
+                              <td style={{ padding: "10px 12px", overflow: "hidden", color: textSub, whiteSpace: "nowrap", fontSize: 11 }}>{createdDate}</td>
+                              {/* Party Key */}
+                              <td style={{ padding: "10px 12px", overflow: "hidden" }}>
+                                <span style={{ fontFamily: "monospace", fontSize: 11, color: textSub }}>{partyKey}</span>
                               </td>
                               {/* Methodology */}
-                              <td style={{ padding: "10px 12px", fontSize: 11 }}>
+                              <td style={{ padding: "10px 12px", fontSize: 11, overflow: "hidden" }}>
                                 <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                                   {getMethodologyLines(n).map((line, li) => {
-                                    const isMatched  = line.startsWith("PRIMARY MATCHED");
-                                    const isDiffered = line.startsWith("PRIMARY DIFFERED");
-                                    const labelEnd   = line.indexOf(":") + 1;
-                                    const label      = line.slice(0, labelEnd);
-                                    const body       = line.slice(labelEnd);
-                                    const labelColor = isMatched ? (darkMode ? "rgba(74,222,128,0.80)" : "rgb(22,163,74)") : isDiffered ? (darkMode ? "rgba(251,146,60,0.80)" : "rgb(194,65,12)") : textDim;
+                                    const labelEnd = line.indexOf(":") + 1;
+                                    const label    = line.slice(0, labelEnd);
+                                    const body     = line.slice(labelEnd);
                                     return (
-                                      <div key={li} style={{ color: textDim, lineHeight: 1.45 }}>
-                                        {label ? <><span style={{ fontWeight: 700, color: labelColor }}>{label}</span>{body}</> : line}
+                                      <div key={li} style={{ color: textDim, lineHeight: 1.45, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                        {label ? <><span style={{ fontWeight: 700, color: textSub }}>{label}</span>{body}</> : line}
                                       </div>
                                     );
                                   })}
@@ -4184,7 +4699,9 @@ export default function Dashboard() {
                 </div>
 
                 {/* Stat cards */}
-                <div className="grid grid-cols-3 gap-3 w-full max-w-3xl items-stretch">
+                <div className="w-full max-w-3xl flex flex-col gap-2">
+                <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "#818cf8", margin: 0 }}>Platform Overview</p>
+                <div className="grid grid-cols-3 gap-3 w-full items-stretch">
                   {([
                     { icon:Users,         end:142, label:"Customers with watchlist matches", change:"+22 since last week",  variant:"neutral" as const },
                     { icon:AlertTriangle, end:89,  label:"New matches detected",             change:"+42% vs last week",    variant:"neutral" as const },
@@ -4192,6 +4709,7 @@ export default function Dashboard() {
                   ]).map((s,i) => (
                     <StatCard key={s.label} icon={s.icon} end={s.end} label={s.label} change={s.change} variant={s.variant} index={i} dark={darkMode} />
                   ))}
+                </div>
                 </div>
 
                 {/* Prompt bar */}
