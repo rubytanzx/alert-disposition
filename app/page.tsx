@@ -4799,6 +4799,9 @@ export default function Dashboard() {
                         staticColors={true}
                         active={true}
                         borderRadius={9999}
+                        strength={0.35}
+                        brightness={0.7}
+                        saturation={0.7}
                         borderBeamClassName="!overflow-hidden rounded-full"
                         className="rounded-full px-3 py-1.5 text-xs font-medium gap-1.5 h-auto"
                         style={darkMode ? { background: "rgba(10,8,20,0.80)", color: "rgba(165,180,252,0.90)" } : { background: "rgba(250,250,255,0.90)", color: "rgba(79,70,229,0.85)" }}
